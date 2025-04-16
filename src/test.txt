@@ -1,0 +1,9 @@
+import React, { useState } from 'react';
+import { Chessboard } from 'react-chessboard';
+import { Chess } from 'chess.js';
+import { analyzePosition, analyzeGame } from './services/api';
+import { FiGitBranch, FiAlertCircle, FiRefreshCw, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+
+function PlayableChessboard() {
+    // ... existing state and logic remains the same ...
+
