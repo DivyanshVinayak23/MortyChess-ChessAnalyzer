@@ -3,7 +3,6 @@ const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Chess } = require('chess.js');
 
-
 const app = express();
 const startPort = process.env.PORT || 5000; 
 
