@@ -130,13 +130,14 @@ function PlayableChessboard() {
                     <div className="nav-links">
                         <Link to="/" className="nav-link">Analyze Game</Link>
                         <Link to="/play" className="nav-link">Play vs Bot</Link>
+                        <Link to="/practice" className="nav-link">Practice Notation</Link>
                         <a href="#features" className="nav-link">
-                            <FiAlertCircle className="nav-icon" />
-                            <span>Features</span>
+                        <FiAlertCircle className="nav-icon" />
+                        <span>Features</span>
                         </a>
                         <a href="https://github.com/yourrepo" className="nav-link">
-                            <FiGitBranch className="nav-icon" />
-                            <span>GitHub</span>
+                        <FiGitBranch className="nav-icon" />
+                        <span>GitHub</span>
                         </a>
                     </div>
                 </nav>

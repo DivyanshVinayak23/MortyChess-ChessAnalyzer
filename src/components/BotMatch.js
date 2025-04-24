@@ -134,6 +134,7 @@ const BotMatch = () => {
           <div className="nav-links">
             <Link to="/" className="nav-link">Analyze Game</Link>
             <Link to="/play" className="nav-link">Play vs Bot</Link>
+            <Link to="/practice" className="nav-link">Practice Notation</Link>
             <a href="#features" className="nav-link">
               <FiAlertCircle className="nav-icon" />
               <span>Features</span>
