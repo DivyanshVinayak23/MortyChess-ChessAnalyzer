@@ -1,0 +1,70 @@
+
+.chess-com-games {
+    padding: 1rem;
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+  }
+  
+  .games-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .username-input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--light-gray);
+    border-radius: var(--border-radius);
+  }
+  
+  .fetch-button {
+    padding: 0.5rem 1rem;
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+  }
+  
+  .fetch-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  .error-message {
+    color: var(--accent-color);
+    margin-bottom: 1rem;
+  }
+  
+  .games-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  
+  .game-item {
+    padding: 1rem;
+    border: 1px solid var(--light-gray);
+    border-radius: var(--border-radius);
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .game-item:hover {
+    background-color: var(--light-gray);
+  }
+  
+  .game-players {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+  }
+  
+  .game-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    color: var(--primary-color);
+  }
+  

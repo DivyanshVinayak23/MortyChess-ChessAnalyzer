@@ -6,6 +6,8 @@ import { FiGitBranch, FiAlertCircle, FiRefreshCw, FiChevronLeft, FiChevronRight,
 import { Link } from 'react-router-dom';
 import logo from './components/logo.png';
 import './styles/PlayableChessboard.css';
+import ChessComGames from './components/ChessComGames';
+
 
 function PlayableChessboard() {
     const [game, setGame] = useState(new Chess());
@@ -147,6 +149,7 @@ function PlayableChessboard() {
                 <aside className="analysis-panel">
                     <h2 className="panel-title">Analysis Controls</h2>
                     <div className="panel-section">
+                    <ChessComGames onGameSelect={setPgn} />
                         <textarea
                             value={pgn}
                             onChange={(e) => setPgn(e.target.value)}

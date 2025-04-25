@@ -67,3 +67,27 @@ export const getBotMove = async (fen, difficulty) => {
     throw error;
   }
 };
+
+export const fetchChessComGames = async (username) => {
+  try {
+    const response = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
+    if (!response.ok) throw new Error('User not found');
+    
+    const archives = await response.json();
+    const gamesPromises = archives.archives.slice(-3).map(url => 
+      fetch(url).then(res => res.json())
+    );
+    
+    const monthlyGames = await Promise.all(gamesPromises);
+    return monthlyGames.flatMap(month => month.games.map(game => ({
+      pgn: game.pgn,
+      white: game.white.username,
+      black: game.black.username,
+      date: new Date(game.end_time * 1000).toLocaleDateString(),
+      result: game.white.result === 'win' ? '1-0' : game.black.result === 'win' ? '0-1' : '½-½'
+    })));
+  } catch (error) {
+    console.error('Error fetching chess.com games:', error);
+    throw error;
+  }
+};
