@@ -1,7 +1,13 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Chess } = require('chess.js');
+
+console.log('Environment variables loaded:', {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Set' : 'Not set',
+    NODE_ENV: process.env.NODE_ENV
+});
 
 const app = express();
 const startPort = process.env.PORT || 5000; 
@@ -9,13 +15,12 @@ const startPort = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-
-const GEMINI_API_KEY = 'your-api-key';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+    console.error('GEMINI_API_KEY is not set in environment variables');
+    process.exit(1);
+}
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-
-
-
 
 app.post('/api/bot-move', async (req, res) => {
     try {
@@ -79,8 +84,6 @@ app.post('/api/bot-move', async (req, res) => {
     }
 });
 
-
-
 app.post('/api/analyze-position', async (req, res) => {
     try {
         const { pgn, moveNumber } = req.body;
@@ -128,7 +131,6 @@ app.post('/api/analyze-position', async (req, res) => {
     }
 });
 
-
 app.post('/api/analyze-game', async (req, res) => {
     try {
         const { pgn } = req.body;
@@ -175,7 +177,6 @@ app.post('/api/analyze-game', async (req, res) => {
     }
 });
 
-
 function findAvailablePort(startPort) {
     return new Promise((resolve, reject) => {
         const server = require('net').createServer();
@@ -194,7 +195,6 @@ function findAvailablePort(startPort) {
         });
     });
 }
-
 
 findAvailablePort(startPort).then(port => {
     app.listen(port, () => {
