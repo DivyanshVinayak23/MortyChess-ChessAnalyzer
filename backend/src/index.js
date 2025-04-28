@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { Chess } = require('chess.js');
+const moveAnalyzer = require('./services/moveAnalysis');
 
 console.log('Environment variables loaded:', {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Set' : 'Not set',
@@ -12,7 +13,13 @@ console.log('Environment variables loaded:', {
 const app = express();
 const startPort = process.env.PORT || 5000; 
 
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    optionsSuccessStatus: 204
+}));
 app.use(express.json());
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -173,6 +180,34 @@ app.post('/api/analyze-game', async (req, res) => {
         res.json(analysis);
     } catch (error) {
         console.error('Error in game analysis:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/analyze-moves', async (req, res) => {
+    try {
+        const { pgn } = req.body;
+        
+        if (!pgn) {
+            return res.status(400).json({ error: 'PGN is required' });
+        }
+
+        const analysis = await moveAnalyzer.analyzeGame(pgn);
+        
+        res.json({
+            moves: analysis,
+            summary: {
+                best: analysis.filter(m => m.quality === 'Best').length,
+                excellent: analysis.filter(m => m.quality === 'Excellent').length,
+                great: analysis.filter(m => m.quality === 'Great').length,
+                good: analysis.filter(m => m.quality === 'Good').length,
+                inaccuracy: analysis.filter(m => m.quality === 'Inaccuracy').length,
+                miss: analysis.filter(m => m.quality === 'Miss').length,
+                blunder: analysis.filter(m => m.quality === 'Blunder').length
+            }
+        });
+    } catch (error) {
+        console.error('Error in move analysis:', error);
         res.status(500).json({ error: error.message });
     }
 });

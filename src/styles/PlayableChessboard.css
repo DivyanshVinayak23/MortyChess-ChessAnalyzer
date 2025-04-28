@@ -436,5 +436,26 @@ body {
   .analysis-grid {
     grid-template-columns: 1fr;
   }
+
+  .move-analysis-panel {
+    margin-top: 2rem;
+    border-top: 2px solid var(--primary-light);
+    padding-top: 2rem;
+  }
+
+  .move-analysis-panel .move-analysis {
+    max-width: 100%;
+    margin: 0;
+    box-shadow: none;
+    border: 2px solid var(--primary-light);
+  }
+
+  .move-analysis-panel .analysis-header {
+    margin-bottom: 1rem;
+  }
+
+  .move-analysis-panel .moves-list {
+    max-height: 400px;
+  }
 }
 

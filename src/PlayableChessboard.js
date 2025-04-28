@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import logo from './components/logo.png';
 import './styles/PlayableChessboard.css';
 import ChessComGames from './components/ChessComGames';
+import MoveAnalysis from './components/MoveAnalysis';
 
 
 function PlayableChessboard() {
@@ -18,6 +19,7 @@ function PlayableChessboard() {
     const [moves, setMoves] = useState([]);
     const [analysis, setAnalysis] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [showMoveAnalysis, setShowMoveAnalysis] = useState(false);
     
     function safeGameMutate(modify) {
         setGame((g) => {
@@ -162,8 +164,25 @@ function PlayableChessboard() {
                                 <FiRefreshCw className="button-icon" />
                                 Load PGN
                             </button>
+                            <button 
+                                onClick={() => setShowMoveAnalysis(true)} 
+                                className="control-button primary"
+                                disabled={!pgn}
+                            >
+                                <FiPlay className="button-icon" />
+                                Analyze Moves
+                            </button>
                         </div>
                     </div>
+
+                    {showMoveAnalysis && (
+                        <div className="move-analysis-panel">
+                            <MoveAnalysis 
+                                pgn={pgn} 
+                                onClose={() => setShowMoveAnalysis(false)} 
+                            />
+                        </div>
+                    )}
 
                     {analysis && (
                         <div className="panel-section">
