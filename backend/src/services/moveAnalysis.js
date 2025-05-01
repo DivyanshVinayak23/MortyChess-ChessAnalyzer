@@ -4,9 +4,12 @@ const { spawn } = require('child_process');
 class MoveAnalyzer {
     constructor() {
         this.stockfish = spawn('stockfish');
-        this.stockfish.on('error', (error) => {
-            console.error('Stockfish error:', error);
+        this.stockfish.stderr.on('data', (data) => {
+            console.error('Stockfish error:', data.toString());
         });
+        this.stockfish.onerror = (error) => {
+            console.error('Stockfish error:', error);
+        };
     }
 
     async analyzeMove(fen, move) {
@@ -93,14 +96,19 @@ class MoveAnalyzer {
                 throw new Error('Invalid PGN: PGN must be a non-empty string');
             }
 
+            // Extract moves from PGN by removing headers and cleaning
+            const movesText = pgn
+                .replace(/\[.*?\]/g, '')     // Remove headers
+                .replace(/\{[^}]*\}/g, '')   // Remove comments
+                .replace(/\d+\./g, '')       // Remove move numbers
+                .replace(/\s+/g, ' ')        // Normalize whitespace
+                .trim();
+
             const game = new Chess();
             
             // Try to load the PGN
             try {
-                const loadResult = game.loadPgn(pgn);
-                if (!loadResult) {
-                    throw new Error('Invalid PGN format: Could not load game');
-                }
+                game.loadPgn(pgn);
             } catch (error) {
                 throw new Error(`Invalid PGN format: ${error.message}`);
             }

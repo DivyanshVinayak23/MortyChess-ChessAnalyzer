@@ -94,6 +94,7 @@ export const fetchChessComGames = async (username) => {
 
 export const analyzeMoves = async (pgn) => {
   try {
+    console.log('Sending PGN to analyze:', pgn.substring(0, 100) + '...');
     const response = await fetch(`${API_BASE_URL}/api/analyze-moves`, {
       method: 'POST',
       headers: {
@@ -103,7 +104,9 @@ export const analyzeMoves = async (pgn) => {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to analyze moves');
+      const errorData = await response.json();
+      console.error('Server error details:', errorData);
+      throw new Error(errorData.error || 'Failed to analyze moves');
     }
 
     return await response.json();

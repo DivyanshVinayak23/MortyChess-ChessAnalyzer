@@ -192,6 +192,8 @@ app.post('/api/analyze-moves', async (req, res) => {
             return res.status(400).json({ error: 'PGN is required' });
         }
 
+        console.log('Analyzing moves for PGN:', pgn.substring(0, 100) + '...');
+        
         const analysis = await moveAnalyzer.analyzeGame(pgn);
         
         res.json({
@@ -208,7 +210,10 @@ app.post('/api/analyze-moves', async (req, res) => {
         });
     } catch (error) {
         console.error('Error in move analysis:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            error: error.message,
+            details: error.stack
+        });
     }
 });
 

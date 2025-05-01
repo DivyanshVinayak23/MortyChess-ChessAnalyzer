@@ -29,10 +29,31 @@ function PlayableChessboard() {
         });
     }
 
+    // Format PGN to ensure it has the required headers
+    const formatPGN = (pgnText) => {
+        // Check if the PGN already has headers
+        if (pgnText.includes('[Event') || pgnText.includes('[Site')) {
+            return pgnText;
+        }
+        
+        // Add basic headers if they're missing
+        const formattedPGN = `[Event "Casual Game"]
+[Site "Chess Analyzer"]
+[Date "${new Date().toISOString().split('T')[0].replace(/-/g, '.')}"]
+[White "Player1"]
+[Black "Player2"]
+[Result "*"]
+
+${pgnText}`;
+        
+        return formattedPGN;
+    };
+
     async function handleAnalyzePosition() {
         setLoading(true);
         try {
-            const data = await analyzePosition(pgn, currentMoveIndex + 1);
+            const formattedPGN = formatPGN(pgn);
+            const data = await analyzePosition(formattedPGN, currentMoveIndex + 1);
             setAnalysis(data);
         } catch (error) {
             console.error('Error analyzing position:', error);
@@ -44,7 +65,8 @@ function PlayableChessboard() {
     async function handleAnalyzeGame() {
         setLoading(true);
         try {
-            const data = await analyzeGame(pgn);
+            const formattedPGN = formatPGN(pgn);
+            const data = await analyzeGame(formattedPGN);
             setAnalysis(data);
         } catch (error) {
             console.error('Error analyzing game:', error);
@@ -106,12 +128,13 @@ function PlayableChessboard() {
 
     function loadPGN() {
         const newGame = new Chess();
-        if (newGame.load_pgn(pgn)) {
+        const formattedPGN = formatPGN(pgn);
+        if (newGame.load_pgn(formattedPGN)) {
             setGame(newGame);
             setMoves(newGame.history({ verbose: true }));
             setCurrentMoveIndex(-1);
         } else {
-            alert('Invalid PGN format');
+            alert('Invalid PGN format. Please check the format and try again.');
         }
     }
 
