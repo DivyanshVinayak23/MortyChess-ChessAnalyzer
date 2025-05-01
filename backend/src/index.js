@@ -230,31 +230,7 @@ app.post('/api/analyze-moves', async (req, res) => {
     }
 });
 
-function findAvailablePort(startPort) {
-    return new Promise((resolve, reject) => {
-        const server = require('net').createServer();
-        
-        server.listen(startPort, () => {
-            const port = server.address().port;
-            server.close(() => resolve(port));
-        });
-        
-        server.on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                resolve(findAvailablePort(startPort + 1));
-            } else {
-                reject(err);
-            }
-        });
-    });
-}
-
-findAvailablePort(startPort).then(port => {
-    app.listen(port, () => {
-        console.log(`Server is running on port ${port}`);
-        console.log(`Frontend should connect to: http://localhost:${port}`);
-    });
-}).catch(err => {
-    console.error('Failed to start server:', err);
-    process.exit(1);
-}); 
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+    console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
+});
