@@ -1,71 +1,74 @@
 const { Chess } = require('chess.js');
-const { spawn } = require('child_process');
 
 class MoveAnalyzer {
     constructor() {
-        this.stockfish = spawn('stockfish');
-        this.stockfish.stderr.on('data', (data) => {
-            console.error('Stockfish error:', data.toString());
-        });
-        this.stockfish.onerror = (error) => {
-            console.error('Stockfish error:', error);
-        };
+        // No need for Stockfish initialization
     }
 
     async analyzeMove(fen, move) {
-        return new Promise((resolve, reject) => {
-            try {
-                const game = new Chess(fen);
-                const moves = game.moves();
-                
-                if (!moves.includes(move)) {
-                    reject(new Error('Invalid move'));
-                    return;
-                }
-
-                let evaluation = 0;
-                let bestMove = '';
-                let analysisComplete = false;
-
-                const timeout = setTimeout(() => {
-                    if (!analysisComplete) {
-                        this.stockfish.kill();
-                        resolve({
-                            move,
-                            bestMove: move,
-                            evaluation: 0,
-                            quality: 'Unknown'
-                        });
-                    }
-                }, 5000);
-
-                this.stockfish.stdout.on('data', (data) => {
-                    const output = data.toString();
-                    if (output.includes('bestmove')) {
-                        bestMove = output.split('bestmove ')[1].split(' ')[0];
-                    }
-                    if (output.includes('score cp')) {
-                        evaluation = parseInt(output.split('score cp ')[1].split(' ')[0]);
-                    }
-                    if (output.includes('bestmove') && output.includes('score cp')) {
-                        analysisComplete = true;
-                        clearTimeout(timeout);
-                        const moveQuality = this.categorizeMove(move, bestMove, evaluation);
-                        resolve({
-                            move,
-                            bestMove,
-                            evaluation,
-                            quality: moveQuality
-                        });
-                    }
-                });
-
-                this.stockfish.stdin.write('position fen ' + fen + '\n');
-                this.stockfish.stdin.write('go depth 20\n');
-            } catch (error) {
-                reject(error);
+        try {
+            const game = new Chess(fen);
+            const moves = game.moves();
+            
+            if (!moves.includes(move)) {
+                throw new Error('Invalid move');
             }
-        });
+
+            // Make the move
+            game.move(move);
+            
+            // Get all legal moves after the move
+            const legalMoves = game.moves();
+            
+            // Simple evaluation based on material
+            const evaluation = this.evaluatePosition(game);
+            
+            // Find the best move based on material
+            let bestMove = '';
+            let bestEval = -Infinity;
+            
+            for (const legalMove of legalMoves) {
+                game.move(legalMove);
+                const moveEval = this.evaluatePosition(game);
+                game.undo();
+                
+                if (moveEval > bestEval) {
+                    bestEval = moveEval;
+                    bestMove = legalMove;
+                }
+            }
+            
+            const moveQuality = this.categorizeMove(move, bestMove, evaluation);
+            
+            return {
+                move,
+                bestMove,
+                evaluation,
+                quality: moveQuality
+            };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    evaluatePosition(game) {
+        // Simple material evaluation
+        const pieceValues = {
+            'p': -1, 'n': -3, 'b': -3, 'r': -5, 'q': -9, 'k': 0,
+            'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9, 'K': 0
+        };
+        
+        let evaluation = 0;
+        const fen = game.fen();
+        const pieces = fen.split(' ')[0];
+        
+        for (const piece of pieces) {
+            if (pieceValues[piece]) {
+                evaluation += pieceValues[piece];
+            }
+        }
+        
+        return evaluation;
     }
 
     categorizeMove(move, bestMove, evaluation) {
@@ -96,55 +99,19 @@ class MoveAnalyzer {
                 throw new Error('Invalid PGN: PGN must be a non-empty string');
             }
 
-            // Extract moves from PGN by removing headers and cleaning
-            const movesText = pgn
-                .replace(/\[.*?\]/g, '')     // Remove headers
-                .replace(/\{[^}]*\}/g, '')   // Remove comments
-                .replace(/\d+\./g, '')       // Remove move numbers
-                .replace(/\s+/g, ' ')        // Normalize whitespace
-                .trim();
-
             const game = new Chess();
-            
-            // Try to load the PGN
-            try {
-                game.loadPgn(pgn);
-            } catch (error) {
-                throw new Error(`Invalid PGN format: ${error.message}`);
-            }
-
-            const moves = game.history();
-            if (moves.length === 0) {
-                throw new Error('Invalid PGN: No moves found in the game');
-            }
-
+            const moves = pgn.split(' ').filter(move => move && !move.includes('.'));
             const analysis = [];
-            for (let i = 0; i < moves.length; i++) {
+
+            for (const move of moves) {
                 const fen = game.fen();
-                const move = moves[i];
-                try {
-                    const moveAnalysis = await this.analyzeMove(fen, move);
-                    analysis.push({
-                        moveNumber: Math.floor(i / 2) + 1,
-                        move,
-                        ...moveAnalysis
-                    });
-                } catch (error) {
-                    console.error(`Error analyzing move ${move}:`, error);
-                    analysis.push({
-                        moveNumber: Math.floor(i / 2) + 1,
-                        move,
-                        bestMove: move,
-                        evaluation: 0,
-                        quality: 'Error'
-                    });
-                }
+                const moveAnalysis = await this.analyzeMove(fen, move);
+                analysis.push(moveAnalysis);
                 game.move(move);
             }
 
             return analysis;
         } catch (error) {
-            console.error('Error analyzing game:', error);
             throw error;
         }
     }
