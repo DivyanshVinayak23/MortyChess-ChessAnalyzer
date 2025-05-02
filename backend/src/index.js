@@ -155,6 +155,9 @@ app.post('/api/analyze-game', async (req, res) => {
     try {
         const { pgn } = req.body;
         
+        if (!pgn) {
+            return res.status(400).json({ error: 'PGN is required' });
+        }
 
         const prompt = `As a chess grandmaster, analyze this complete game:
         ${pgn}
@@ -169,19 +172,21 @@ app.post('/api/analyze-game', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
+        if (!text || text.trim() === '') {
+            throw new Error('Empty response from Gemini');
+        }
+
         console.log('=== Gemini Response ===');
         console.log(text);
         console.log('=====================\n');
 
-
         const analysis = {
-            summary: text,
+            summary: text || 'No analysis available',
             moves: pgn.split(' ').filter(move => move && !move.includes('.')),
             best_moves: [],
             depth: 0,
@@ -193,7 +198,10 @@ app.post('/api/analyze-game', async (req, res) => {
         res.json(analysis);
     } catch (error) {
         console.error('Error in game analysis:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            error: error.message,
+            details: error.stack
+        });
     }
 });
 

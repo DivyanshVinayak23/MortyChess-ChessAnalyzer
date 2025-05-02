@@ -23,6 +23,10 @@ export const analyzePosition = async (pgn, moveNumber) => {
 
 export const analyzeGame = async (pgn) => {
   try {
+    if (!pgn) {
+      throw new Error('PGN is required');
+    }
+
     const response = await fetch(`${API_BASE_URL}/analyze-game`, {
       method: 'POST',
       headers: {
@@ -32,10 +36,17 @@ export const analyzeGame = async (pgn) => {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to analyze game');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to analyze game');
     }
 
-    return await response.json();
+    const data = await response.json();
+    
+    if (!data || !data.summary) {
+      throw new Error('Invalid response format from server');
+    }
+
+    return data;
   } catch (error) {
     console.error('Error analyzing game:', error);
     throw error;
