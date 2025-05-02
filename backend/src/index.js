@@ -14,7 +14,7 @@ const app = express();
 const port = process.env.PORT || 4000; 
 
 const allowedOrigins = [
-    'https://chess-analyzer-frontend.onrender.com',
+    'https://mortychess.onrender.com',
     'http://localhost:3000'
 ];
 

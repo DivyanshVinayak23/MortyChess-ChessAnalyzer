@@ -1,8 +1,8 @@
-const API_BASE_URL = 'https://mortychess-backend.onrender.com';
+const API_BASE_URL = 'https://mortychess.onrender.com/api';
 
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/analyze-position`, {
+    const response = await fetch(`${API_BASE_URL}/analyze-position`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -23,7 +23,7 @@ export const analyzePosition = async (pgn, moveNumber) => {
 
 export const analyzeGame = async (pgn) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/analyze-game`, {
+    const response = await fetch(`${API_BASE_URL}/analyze-game`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -45,8 +45,8 @@ export const analyzeGame = async (pgn) => {
 export const getBotMove = async (fen, difficulty) => {
   console.log('getBotMove called with:', { fen, difficulty });
   try {
-    console.log('Sending request to:', `${API_BASE_URL}/api/bot-move`);
-    const response = await fetch(`${API_BASE_URL}/api/bot-move`, {
+    console.log('Sending request to:', `${API_BASE_URL}/bot-move`);
+    const response = await fetch(`${API_BASE_URL}/bot-move`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -95,7 +95,7 @@ export const fetchChessComGames = async (username) => {
 export const analyzeMoves = async (pgn) => {
   try {
     console.log('Sending PGN to analyze:', pgn.substring(0, 100) + '...');
-    const response = await fetch(`${API_BASE_URL}/api/analyze-moves`, {
+    const response = await fetch(`${API_BASE_URL}/analyze-moves`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
