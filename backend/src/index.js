@@ -108,7 +108,10 @@ app.post('/api/analyze-position', async (req, res) => {
     try {
         const { pgn, moveNumber } = req.body;
         
-    
+        if (!pgn || moveNumber === undefined) {
+            return res.status(400).json({ error: 'PGN and moveNumber are required' });
+        }
+
         const prompt = `As a chess grandmaster, analyze this position from the following PGN at move ${moveNumber}:
         ${pgn}, make sure the output is short and to the point, no paragraphs
         
@@ -124,21 +127,29 @@ app.post('/api/analyze-position', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-       
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
 
+        if (!text || text.trim() === '') {
+            throw new Error('Empty response from Gemini');
+        }
+
         console.log('=== Gemini Response ===');
         console.log(text);
         console.log('=====================\n');
 
+        // Extract best move and explanation from the response
+        const lines = text.split('\n').filter(line => line.trim());
+        const bestMove = lines[0]?.split(':')[1]?.trim() || 'No move found';
+        const explanation = lines[1]?.split(':')[1]?.trim() || 'No explanation available';
+
         const analysis = {
-            evaluation: text.substring(8, text.length),
+            evaluation: explanation,
             current_move: moveNumber,
             position: pgn,
-            best_move: [text.substring(14, 21)], 
+            best_move: [bestMove],
             depth: 0,
             nodes: 0,
             time: 0,
@@ -147,7 +158,10 @@ app.post('/api/analyze-position', async (req, res) => {
         res.json(analysis);
     } catch (error) {
         console.error('Error in position analysis:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            error: error.message,
+            details: error.stack
+        });
     }
 });
 

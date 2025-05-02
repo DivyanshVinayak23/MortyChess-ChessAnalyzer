@@ -2,6 +2,10 @@ const API_BASE_URL = 'https://mortychess.onrender.com/api';
 
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
+    if (!pgn || moveNumber === undefined) {
+      throw new Error('PGN and moveNumber are required');
+    }
+
     const response = await fetch(`${API_BASE_URL}/analyze-position`, {
       method: 'POST',
       headers: {
@@ -11,10 +15,17 @@ export const analyzePosition = async (pgn, moveNumber) => {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to analyze position');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to analyze position');
     }
 
-    return await response.json();
+    const data = await response.json();
+    
+    if (!data || !data.best_move || !data.evaluation) {
+      throw new Error('Invalid response format from server');
+    }
+
+    return data;
   } catch (error) {
     console.error('Error analyzing position:', error);
     throw error;
