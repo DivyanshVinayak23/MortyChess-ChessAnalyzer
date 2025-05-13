@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { getBotMove } from '../services/api';
-import { FiGitBranch, FiAlertCircle, FiRefreshCw, FiPlay, FiSettings } from 'react-icons/fi';
+import { getBotMove, getMoveSuggestions } from '../services/api';
+import { FiGitBranch, FiAlertCircle, FiRefreshCw, FiPlay, FiSettings, FiHelpCircle } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import logo from './logo.png';
 import '../styles/BotMatch.css';
+import MoveSuggestions from './MoveSuggestions';
 
 const BotMatch = () => {
   const [game, setGame] = useState(new Chess());
@@ -18,6 +19,8 @@ const BotMatch = () => {
   const [moveHistory, setMoveHistory] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
+  const [suggestions, setSuggestions] = useState(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   useEffect(() => {
     console.log('State updated:', { 
@@ -166,6 +169,34 @@ const BotMatch = () => {
     }
   };
 
+  const fetchMoveSuggestions = async () => {
+    if (isThinking || gameStatus !== 'playing') return;
+    
+    setLoadingSuggestions(true);
+    try {
+      const data = await getMoveSuggestions(game.fen());
+      setSuggestions(data.suggestions);
+    } catch (error) {
+      console.error('Error fetching move suggestions:', error);
+    }
+    setLoadingSuggestions(false);
+  };
+
+  const handleMoveSelect = (move) => {
+    if (isThinking || gameStatus !== 'playing') return;
+
+    const moveObj = game.move(move);
+    if (moveObj) {
+      setPosition(game.fen());
+      checkGameStatus();
+      setPendingMove(moveObj);
+      setShowConfirmButton(true);
+      setSelectedSquare(null);
+      setValidMoves([]);
+      setSuggestions(null);
+    }
+  };
+
   return (
     <div className="app-container">
       <header className="App-header">
@@ -249,15 +280,31 @@ const BotMatch = () => {
               )}
             </div>
 
-            <div className="move-history">
-              <h3>Move History</h3>
-              <div className="moves-list">
-                {moveHistory.map((move, index) => (
-                  <div key={index} className="move-item">
-                    {index % 2 === 0 ? `${Math.floor(index/2) + 1}.` : ''} {move}
-                  </div>
-                ))}
+            <div className="game-sidebar">
+              <div className="move-history">
+                <h3>Move History</h3>
+                <div className="moves-list">
+                  {moveHistory.map((move, index) => (
+                    <div key={index} className="move-item">
+                      {index % 2 === 0 ? `${Math.floor(index/2) + 1}.` : ''} {move}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              <button
+                onClick={fetchMoveSuggestions}
+                className="control-button primary"
+                disabled={isThinking || gameStatus !== 'playing' || loadingSuggestions}
+              >
+                <FiHelpCircle className="button-icon" />
+                {loadingSuggestions ? 'Loading...' : 'Get Move Suggestions'}
+              </button>
+
+              <MoveSuggestions 
+                suggestions={suggestions}
+                onMoveSelect={handleMoveSelect}
+              />
             </div>
           </div>
 

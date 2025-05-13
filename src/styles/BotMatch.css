@@ -68,6 +68,12 @@
   align-items: start;
 }
 
+.game-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .chess-board-container {
   position: relative;
   border-radius: var(--border-radius);
@@ -133,6 +139,8 @@
   box-shadow: var(--box-shadow);
   border: 2px solid var(--primary-light);
   height: fit-content;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .move-history h3 {
@@ -148,9 +156,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 0.5rem;
 }
 
 .moves-list::-webkit-scrollbar {
@@ -236,8 +241,8 @@
     grid-template-columns: 1fr;
   }
 
-  .chess-board-container {
-    max-width: 100%;
+  .game-sidebar {
+    order: -1;
   }
 
   .move-history {

@@ -149,3 +149,35 @@ export const analyzeMoves = async (pgn) => {
     throw error;
   }
 };
+
+export const getMoveSuggestions = async (fen) => {
+  try {
+    if (!fen) {
+      throw new Error('FEN is required');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/suggest-moves`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fen }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to get move suggestions');
+    }
+
+    const data = await response.json();
+    
+    if (!data || !data.suggestions) {
+      throw new Error('Invalid response format from server');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error getting move suggestions:', error);
+    throw error;
+  }
+};

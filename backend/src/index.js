@@ -253,6 +253,104 @@ app.post('/api/analyze-moves', async (req, res) => {
     }
 });
 
+app.post('/api/suggest-moves', async (req, res) => {
+    try {
+        const { fen } = req.body;
+        
+        if (!fen) {
+            return res.status(400).json({ error: 'FEN is required' });
+        }
+
+        const game = new Chess(fen);
+        const moves = game.moves({ verbose: true });
+        
+        if (moves.length === 0) {
+            return res.status(400).json({ error: 'No legal moves available' });
+        }
+
+        const prompt = `As a chess grandmaster, analyze this position (FEN: ${fen}) and suggest the top 3 best moves.
+        
+        IMPORTANT: Respond with ONLY the raw JSON array, NO markdown formatting, NO code blocks, NO backticks.
+        
+        You MUST respond with a valid JSON array containing exactly 3 objects. Each object MUST have these exact fields:
+        - "move": The move in algebraic notation (e.g., "e4", "Nf3", "O-O")
+        - "explanation": A single line explaining why this move is good
+        - "risks": A single line describing potential drawbacks or risks
+        
+        Example response format (respond with ONLY the array, no other text):
+        [
+            {
+                "move": "e4",
+                "explanation": "Controls the center and opens lines for the bishop and queen",
+                "risks": "Slightly weakens the d4 square"
+            },
+            {
+                "move": "d4",
+                "explanation": "Establishes a strong center presence and opens the queen's diagonal",
+                "risks": "Can lead to a closed position"
+            },
+            {
+                "move": "Nf3",
+                "explanation": "Develops a knight while maintaining flexibility",
+                "risks": "Delays central pawn advance"
+            }
+        ]
+
+        Keep explanations and risks concise and focused on the immediate position.
+        Remember: Return ONLY the raw JSON array, no markdown, no code blocks, no backticks.`;
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+
+        if (!text || text.trim() === '') {
+            throw new Error('Empty response from Gemini');
+        }
+
+        // Parse the response and ensure it's in the correct format
+        let suggestions;
+        try {
+            // First try to parse the response as JSON
+            suggestions = JSON.parse(text);
+            
+            // Validate the structure
+            if (!Array.isArray(suggestions) || suggestions.length !== 3) {
+                throw new Error('Invalid response format: expected array of 3 moves');
+            }
+            
+            suggestions = suggestions.map(suggestion => ({
+                move: suggestion.move?.trim() || '',
+                explanation: suggestion.explanation?.trim() || '',
+                risks: suggestion.risks?.trim() || ''
+            }));
+
+            // Filter out any invalid suggestions
+            suggestions = suggestions.filter(s => s.move && s.explanation && s.risks);
+            
+            if (suggestions.length === 0) {
+                throw new Error('No valid suggestions found in response');
+            }
+        } catch (error) {
+            console.error('Error parsing suggestions:', error);
+            // If parsing fails, return a more helpful error
+            return res.status(500).json({ 
+                error: 'Failed to parse move suggestions',
+                details: error.message,
+                rawResponse: text
+            });
+        }
+
+        res.json({ suggestions });
+    } catch (error) {
+        console.error('Error in move suggestions:', error);
+        res.status(500).json({ 
+            error: error.message,
+            details: error.stack
+        });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
     console.log(`Allowed origins: ${allowedOrigins.join(', ')}`);
