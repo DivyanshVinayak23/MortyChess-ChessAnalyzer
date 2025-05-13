@@ -14,22 +14,15 @@ const app = express();
 const port = process.env.PORT || 4000; 
 
 const allowedOrigins = [
-    'https://mortychess.onrender.com',
-    'http://localhost:3000'
+    'http://localhost:3000'  // Only allow local frontend during development
 ];
 
+// Development CORS configuration
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            const msg = `The CORS policy for this site does not allow access from ${origin}.`;
-            return callback(new Error(msg), false);
-        }
-        return callback(null, true);
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: 'http://localhost:3000',  // Explicitly set to frontend URL
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     optionsSuccessStatus: 204
 }));
 
@@ -231,18 +224,26 @@ app.post('/api/analyze-moves', async (req, res) => {
         
         const analysis = await moveAnalyzer.analyzeGame(pgn);
         
-        res.json({
+        if (!analysis || !Array.isArray(analysis)) {
+            throw new Error('Invalid analysis result from move analyzer');
+        }
+
+        const summary = {
+            best: analysis.filter(m => m.quality === 'Best').length,
+            excellent: analysis.filter(m => m.quality === 'Excellent').length,
+            great: analysis.filter(m => m.quality === 'Great').length,
+            good: analysis.filter(m => m.quality === 'Good').length,
+            inaccuracy: analysis.filter(m => m.quality === 'Inaccuracy').length,
+            miss: analysis.filter(m => m.quality === 'Miss').length,
+            blunder: analysis.filter(m => m.quality === 'Blunder').length
+        };
+
+        const response = {
             moves: analysis,
-            summary: {
-                best: analysis.filter(m => m.quality === 'Best').length,
-                excellent: analysis.filter(m => m.quality === 'Excellent').length,
-                great: analysis.filter(m => m.quality === 'Great').length,
-                good: analysis.filter(m => m.quality === 'Good').length,
-                inaccuracy: analysis.filter(m => m.quality === 'Inaccuracy').length,
-                miss: analysis.filter(m => m.quality === 'Miss').length,
-                blunder: analysis.filter(m => m.quality === 'Blunder').length
-            }
-        });
+            summary: summary
+        };
+
+        res.json(response);
     } catch (error) {
         console.error('Error in move analysis:', error);
         res.status(500).json({ 

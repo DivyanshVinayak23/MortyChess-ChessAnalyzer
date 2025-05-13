@@ -16,6 +16,8 @@ const BotMatch = () => {
   const [pendingMove, setPendingMove] = useState(null);
   const [showConfirmButton, setShowConfirmButton] = useState(false);
   const [moveHistory, setMoveHistory] = useState([]);
+  const [selectedSquare, setSelectedSquare] = useState(null);
+  const [validMoves, setValidMoves] = useState([]);
 
   useEffect(() => {
     console.log('State updated:', { 
@@ -124,6 +126,46 @@ const BotMatch = () => {
     setMoveHistory([]);
   };
 
+  const onSquareClick = (square) => {
+    if (isThinking || gameStatus !== 'playing') {
+      return;
+    }
+
+    const piece = game.get(square);
+    
+    if (!selectedSquare && piece) {
+      if (piece.color === game.turn()) {
+        setSelectedSquare(square);
+        const moves = game.moves({ square, verbose: true });
+        setValidMoves(moves.map(move => move.to));
+      }
+    }
+    else if (selectedSquare && validMoves.includes(square)) {
+      const move = game.move({
+        from: selectedSquare,
+        to: square,
+        promotion: 'q'
+      });
+      if (move) {
+        setPosition(game.fen());
+        checkGameStatus();
+        setPendingMove(move);
+        setShowConfirmButton(true);
+        setSelectedSquare(null);
+        setValidMoves([]);
+      }
+    }
+    else if (piece && piece.color === game.turn()) {
+      setSelectedSquare(square);
+      const moves = game.moves({ square, verbose: true });
+      setValidMoves(moves.map(move => move.to));
+    }
+    else {
+      setSelectedSquare(null);
+      setValidMoves([]);
+    }
+  };
+
   return (
     <div className="app-container">
       <header className="App-header">
@@ -178,6 +220,7 @@ const BotMatch = () => {
               <Chessboard 
                 position={position}
                 onPieceDrop={onDrop}
+                onSquareClick={onSquareClick}
                 boardOrientation="white"
                 boardWidth={560}
                 customBoardStyle={{
@@ -188,7 +231,14 @@ const BotMatch = () => {
                   ...(pendingMove && {
                     [pendingMove.from]: { background: 'rgba(255, 215, 0, 0.4)' },
                     [pendingMove.to]: { background: 'rgba(255, 215, 0, 0.4)' }
-                  })
+                  }),
+                  ...(selectedSquare && {
+                    [selectedSquare]: { background: 'rgba(255, 255, 0, 0.4)' }
+                  }),
+                  ...(validMoves.reduce((acc, square) => {
+                    acc[square] = { background: 'rgba(0, 255, 0, 0.4)' };
+                    return acc;
+                  }, {}))
                 }}
               />
               {isThinking && (

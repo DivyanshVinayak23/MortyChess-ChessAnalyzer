@@ -1,4 +1,6 @@
-const API_BASE_URL = 'https://mortychess.onrender.com/api';
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:4000/api'
+    : 'https://mortychess.onrender.com/api';
 
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
@@ -116,7 +118,12 @@ export const fetchChessComGames = async (username) => {
 
 export const analyzeMoves = async (pgn) => {
   try {
+    if (!pgn) {
+      throw new Error('PGN is required');
+    }
+
     console.log('Sending PGN to analyze:', pgn.substring(0, 100) + '...');
+    
     const response = await fetch(`${API_BASE_URL}/analyze-moves`, {
       method: 'POST',
       headers: {
@@ -127,11 +134,16 @@ export const analyzeMoves = async (pgn) => {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Server error details:', errorData);
       throw new Error(errorData.error || 'Failed to analyze moves');
     }
 
-    return await response.json();
+    const data = await response.json();
+    
+    if (!data || !data.moves || !data.summary) {
+      throw new Error('Invalid response format from server');
+    }
+
+    return data;
   } catch (error) {
     console.error('Error analyzing moves:', error);
     throw error;
