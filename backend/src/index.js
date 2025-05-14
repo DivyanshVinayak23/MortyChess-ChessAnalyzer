@@ -15,26 +15,32 @@ const port = process.env.PORT || 4000;
 
 const allowedOrigins = [
     'http://localhost:3000',  // Local development frontend
-    'https://mortychess.onrender.com'  // Production frontend
+    'https://mortychess.onrender.com',  // Production frontend
+    'https://chess-analyzer.onrender.com', // Additional domain if needed
+
 ];
 
 // CORS configuration for both development and production
 app.use(cors({
     origin: function(origin, callback) {
-        // Allow requests with no origin (like mobile apps, curl, etc.)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) === -1) {
-            console.log(`Rejected request from origin: ${origin}`);
-            return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
+        // Allow requests with no origin (like mobile apps, curl, postman, etc.)
+        if (!origin) {
+            console.log('Request with no origin allowed');
+            return callback(null, true);
         }
         
-        console.log(`Allowed request from origin: ${origin}`);
-        return callback(null, true);
+        // Check against allowed origins
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            console.log(`Allowed request from origin: ${origin}`);
+            return callback(null, true);
+        } else {
+            console.log(`Rejected request from origin: ${origin}`);
+            return callback(null, false);
+        }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     optionsSuccessStatus: 204
 }));
 
@@ -61,19 +67,40 @@ app.post('/api/bot-move', async (req, res) => {
         let game;
         
         try {
+            console.log('Creating Chess instance with FEN:', fen);
             game = new Chess(fen);
+            console.log('Game created successfully');
+            
+            // Log game state
+            console.log('Chess position validation:');
+            console.log('- FEN:', game.fen());
+            console.log('- Turn:', game.turn());
+            console.log('- Is valid:', game.validate_fen(fen).valid);
         } catch (error) {
             console.error('Error creating Chess instance:', error);
-            return res.status(400).json({ error: 'Invalid FEN position' });
+            console.error('Invalid FEN:', fen);
+            return res.status(400).json({ error: `Invalid FEN position: ${error.message}` });
         }
         
+        // Get all available moves
+        let moves = [];
+        try {
+            moves = game.moves();
+            console.log(`Available moves (${moves.length}):`, moves);
+        } catch (movesError) {
+            console.error('Error getting moves:', movesError);
+            return res.status(500).json({ error: `Error getting moves: ${movesError.message}` });
+        }
+        
+        if (moves.length === 0) {
+            console.error('No valid moves found for position:', fen);
+            return res.status(400).json({ error: 'No valid moves found' });
+        }
+
+        // Logic for different difficulty levels
         if (difficulty === 'easy') {
-            const moves = game.moves();
-            if (moves.length > 0) {
-                move = moves[Math.floor(Math.random() * moves.length)];
-            }
+            move = moves[Math.floor(Math.random() * moves.length)];
         } else if (difficulty === 'medium') {
-            const moves = game.moves();
             const captures = moves.filter(m => m.includes('x'));
             const checks = moves.filter(m => m.includes('+'));
             
@@ -81,11 +108,10 @@ app.post('/api/bot-move', async (req, res) => {
                 move = checks[Math.floor(Math.random() * checks.length)];
             } else if (captures.length > 0) {
                 move = captures[Math.floor(Math.random() * captures.length)];
-            } else if (moves.length > 0) {
+            } else {
                 move = moves[Math.floor(Math.random() * moves.length)];
             }
         } else {
-            const moves = game.moves();
             const captures = moves.filter(m => m.includes('x'));
             const checks = moves.filter(m => m.includes('+'));
             const centerMoves = moves.filter(m => 
@@ -99,11 +125,18 @@ app.post('/api/bot-move', async (req, res) => {
                 move = captures[Math.floor(Math.random() * captures.length)];
             } else if (centerMoves.length > 0) {
                 move = centerMoves[Math.floor(Math.random() * centerMoves.length)];
-            } else if (moves.length > 0) {
+            } else {
                 move = moves[Math.floor(Math.random() * moves.length)];
             }
         }
         
+        // If we somehow still don't have a move, pick a random one as fallback
+        if (!move && moves.length > 0) {
+            console.log('Using fallback random move');
+            move = moves[Math.floor(Math.random() * moves.length)];
+        }
+        
+        // Final safety check - if there's still no move, return an error
         if (!move) {
             console.error('No valid moves found for position:', fen);
             return res.status(400).json({ error: 'No valid moves found' });
@@ -111,10 +144,13 @@ app.post('/api/bot-move', async (req, res) => {
         
         const response = { move };
         console.log('Sending bot move response:', response);
-        res.json(response);
+        
+        // Set explicit content type header
+        res.setHeader('Content-Type', 'application/json');
+        return res.json(response);
     } catch (error) {
         console.error('Error in bot move:', error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message || 'Server error' });
     }
 });
 

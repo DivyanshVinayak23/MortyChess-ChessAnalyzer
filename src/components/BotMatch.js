@@ -64,15 +64,44 @@ const BotMatch = () => {
     setIsThinking(true);
     setErrorMessage(null);
     try {
-      console.log('Sending request to get bot move with FEN:', game.fen());
+      // Verify the game state is valid before sending to server
+      if (!game || typeof game.fen !== 'function') {
+        throw new Error('Invalid game state. Try resetting the game.');
+      }
+      
+      const fen = game.fen();
+      console.log('Sending request to get bot move with FEN:', fen);
       console.log('Difficulty setting:', difficulty);
       
-      const data = await getBotMove(game.fen(), difficulty);
+      // Validate that there are available moves
+      try {
+        const availableMoves = game.moves();
+        console.log(`Available moves (${availableMoves.length}):`, availableMoves);
+        
+        if (availableMoves.length === 0) {
+          console.log('Game over - no moves available');
+          checkGameStatus(); // Re-check game status
+          setIsThinking(false);
+          return;
+        }
+      } catch (moveError) {
+        console.error('Error checking available moves:', moveError);
+      }
+      
+      const data = await getBotMove(fen, difficulty);
       console.log('Bot move response:', data);
       
       if (data && data.move) {
         console.log('Making bot move:', data.move);
-        makeMove(data.move);
+        
+        // Try to make the move
+        const moveResult = makeMove(data.move);
+        
+        if (!moveResult) {
+          console.error('Bot returned invalid move:', data.move);
+          throw new Error(`Invalid move returned: ${data.move}`);
+        }
+        
         setRetryCount(0); // Reset retry count on success
       } else {
         console.error('Invalid bot move response:', data);
@@ -81,17 +110,20 @@ const BotMatch = () => {
     } catch (error) {
       console.error('Error getting bot move:', error);
       
-      // Retry logic for network errors
+      // Retry logic for network errors with a maximum retry limit
       if (retryCount < 2) {
         setRetryCount(prev => prev + 1);
         setErrorMessage(`Connection issue. Retrying... (${retryCount + 1}/3)`);
+        // Use setTimeout to retry, but cap at 3 attempts
         setTimeout(makeBotMove, 2000); // Retry after 2 seconds
       } else {
-        setErrorMessage(`Failed to get bot move: ${error.message}`);
+        // After max retries, show final error and reset
+        setErrorMessage(`Failed to get bot move: ${error.message}. Please try again.`);
         setRetryCount(0);
+        setIsThinking(false);
       }
     } finally {
-      if (retryCount === 0) {
+      if (retryCount >= 2) {
         setIsThinking(false);
       }
     }
@@ -99,14 +131,13 @@ const BotMatch = () => {
 
   const checkGameStatus = () => {
     try {
-      if (game.isGameOver()) {
-        if (game.isCheckmate()) {
-          setGameStatus('checkmate');
-        } else if (game.isStalemate()) {
-          setGameStatus('stalemate');
-        } else if (game.isDraw()) {
-          setGameStatus('draw');
-        }
+      // Chess.js v0.13.4 methods for checking game end
+      if (game.in_checkmate()) {
+        setGameStatus('checkmate');
+      } else if (game.in_stalemate()) {
+        setGameStatus('stalemate');
+      } else if (game.in_draw() || game.in_threefold_repetition() || game.insufficient_material()) {
+        setGameStatus('draw');
       }
     } catch (error) {
       console.error('Error checking game status:', error);
@@ -153,14 +184,30 @@ const BotMatch = () => {
   };
 
   const resetGame = () => {
-    const newGame = new Chess();
-    setGame(newGame);
-    setPosition('start');
-    setGameStatus('playing');
-    setIsThinking(false);
-    setPendingMove(null);
-    setShowConfirmButton(false);
-    setMoveHistory([]);
+    try {
+      console.log('Resetting game');
+      const newGame = new Chess();
+      console.log('New game created successfully');
+      
+      // Clear all game state
+      setGame(newGame);
+      setPosition('start');
+      setGameStatus('playing');
+      setIsThinking(false);
+      setPendingMove(null);
+      setShowConfirmButton(false);
+      setMoveHistory([]);
+      setSelectedSquare(null);
+      setValidMoves([]);
+      setSuggestions(null);
+      setErrorMessage(null);
+      setRetryCount(0);
+      
+      console.log('Game state reset complete');
+    } catch (error) {
+      console.error('Error resetting game:', error);
+      setErrorMessage('Failed to reset the game. Please refresh the page.');
+    }
   };
 
   const onSquareClick = (square) => {
