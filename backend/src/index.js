@@ -312,17 +312,63 @@ app.post('/api/analyze-moves', async (req, res) => {
 
 app.post('/api/suggest-moves', async (req, res) => {
     try {
+        console.log('Move suggestions request received:', req.body);
         const { fen } = req.body;
         
         if (!fen) {
+            console.error('Missing required field: FEN');
             return res.status(400).json({ error: 'FEN is required' });
         }
 
-        const game = new Chess(fen);
+        let game;
+        try {
+            console.log('Creating Chess instance with FEN:', fen);
+            game = new Chess(fen);
+            console.log('Game created successfully');
+            
+            // Log game state
+            console.log('Chess position validation:');
+            console.log('- FEN:', game.fen());
+            console.log('- Turn:', game.turn());
+            console.log('- Is valid:', game.validate_fen(fen).valid);
+        } catch (error) {
+            console.error('Error creating Chess instance:', error);
+            console.error('Invalid FEN:', fen);
+            return res.status(400).json({ error: `Invalid FEN position: ${error.message}` });
+        }
+        
         const moves = game.moves({ verbose: true });
+        console.log(`Available moves (${moves.length}):`, moves.map(m => m.san));
         
         if (moves.length === 0) {
+            console.log('No legal moves available');
             return res.status(400).json({ error: 'No legal moves available' });
+        }
+
+        // If we're in development environment, use a simpler response for testing
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Development mode: sending simple move suggestions');
+            const simpleSuggestions = [
+                {
+                    move: moves[0].san,
+                    explanation: "This is a good move that develops your position",
+                    risks: "May expose your pieces to counterattack"
+                },
+                {
+                    move: moves.length > 1 ? moves[1].san : moves[0].san,
+                    explanation: "Controls important squares in the center",
+                    risks: "Requires careful defense"
+                },
+                {
+                    move: moves.length > 2 ? moves[2].san : moves[0].san,
+                    explanation: "Creates threats against your opponent",
+                    risks: "Could be countered if not supported"
+                }
+            ];
+            
+            // Set explicit content type header
+            res.setHeader('Content-Type', 'application/json');
+            return res.json({ suggestions: simpleSuggestions });
         }
 
         const prompt = `As a chess grandmaster, analyze this position (FEN: ${fen}) and suggest the top 3 best moves.
@@ -356,53 +402,95 @@ app.post('/api/suggest-moves', async (req, res) => {
         Keep explanations and risks concise and focused on the immediate position.
         Remember: Return ONLY the raw JSON array, no markdown, no code blocks, no backticks.`;
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        if (!text || text.trim() === '') {
-            throw new Error('Empty response from Gemini');
-        }
-
-        // Parse the response and ensure it's in the correct format
-        let suggestions;
+        console.log('Sending prompt to Gemini');
+        
         try {
-            // First try to parse the response as JSON
-            suggestions = JSON.parse(text);
-            
-            // Validate the structure
-            if (!Array.isArray(suggestions) || suggestions.length !== 3) {
-                throw new Error('Invalid response format: expected array of 3 moves');
-            }
-            
-            suggestions = suggestions.map(suggestion => ({
-                move: suggestion.move?.trim() || '',
-                explanation: suggestion.explanation?.trim() || '',
-                risks: suggestion.risks?.trim() || ''
-            }));
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
 
-            // Filter out any invalid suggestions
-            suggestions = suggestions.filter(s => s.move && s.explanation && s.risks);
-            
-            if (suggestions.length === 0) {
-                throw new Error('No valid suggestions found in response');
+            if (!text || text.trim() === '') {
+                console.error('Empty response from Gemini');
+                throw new Error('Empty response from Gemini');
             }
-        } catch (error) {
-            console.error('Error parsing suggestions:', error);
-            // If parsing fails, return a more helpful error
-            return res.status(500).json({ 
-                error: 'Failed to parse move suggestions',
-                details: error.message,
-                rawResponse: text
+
+            console.log('Gemini response received, length:', text.length);
+            
+            // Parse the response and ensure it's in the correct format
+            let suggestions;
+            try {
+                // First try to parse the response as JSON
+                suggestions = JSON.parse(text);
+                
+                // Validate the structure
+                if (!Array.isArray(suggestions) || suggestions.length !== 3) {
+                    console.error('Invalid response format:', suggestions);
+                    throw new Error('Invalid response format: expected array of 3 moves');
+                }
+                
+                suggestions = suggestions.map(suggestion => ({
+                    move: suggestion.move?.trim() || '',
+                    explanation: suggestion.explanation?.trim() || '',
+                    risks: suggestion.risks?.trim() || ''
+                }));
+
+                // Filter out any invalid suggestions
+                suggestions = suggestions.filter(s => s.move && s.explanation && s.risks);
+                
+                if (suggestions.length === 0) {
+                    console.error('No valid suggestions found in response');
+                    throw new Error('No valid suggestions found in response');
+                }
+            } catch (parseError) {
+                console.error('Error parsing suggestions:', parseError, 'Response text:', text);
+                // If parsing fails, return a more helpful error
+                return res.status(500).json({ 
+                    error: 'Failed to parse move suggestions',
+                    details: parseError.message,
+                    rawResponse: text
+                });
+            }
+            
+            // Set explicit content type header
+            res.setHeader('Content-Type', 'application/json');
+            return res.json({ suggestions });
+        } catch (modelError) {
+            console.error('Error from Gemini API:', modelError);
+            
+            // Generate fallback suggestions
+            const simpleSuggestions = [
+                {
+                    move: moves[0].san,
+                    explanation: "This move develops your position and creates opportunities",
+                    risks: "Consider how your opponent might respond"
+                },
+                {
+                    move: moves.length > 1 ? moves[1].san : moves[0].san,
+                    explanation: "Controls important squares in the center",
+                    risks: "Requires careful defense"
+                },
+                {
+                    move: moves.length > 2 ? moves[2].san : moves[0].san,
+                    explanation: "Creates threats against your opponent's position",
+                    risks: "Could be countered if not supported properly"
+                }
+            ];
+            
+            // Set explicit content type header
+            res.setHeader('Content-Type', 'application/json');
+            return res.json({ 
+                suggestions: simpleSuggestions,
+                source: 'fallback-server'
             });
         }
-
-        res.json({ suggestions });
     } catch (error) {
         console.error('Error in move suggestions:', error);
-        res.status(500).json({ 
-            error: error.message,
+        
+        // Set explicit content type header
+        res.setHeader('Content-Type', 'application/json');
+        return res.status(500).json({ 
+            error: error.message || 'Server error',
             details: error.stack
         });
     }

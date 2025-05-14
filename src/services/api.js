@@ -221,6 +221,94 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   throw lastError;
 };
 
+// Generate default move suggestions when the API fails
+const generateFallbackSuggestions = (fen) => {
+  try {
+    const { Chess } = require('chess.js');
+    const game = new Chess(fen);
+    const moves = game.moves();
+    
+    if (!moves || moves.length === 0) {
+      return { suggestions: [] };
+    }
+    
+    // Get some variety in move types
+    const captures = moves.filter(m => m.includes('x'));
+    const checks = moves.filter(m => m.includes('+'));
+    const centerMoves = moves.filter(m => 
+      m.includes('e4') || m.includes('e5') || 
+      m.includes('d4') || m.includes('d5')
+    );
+    
+    // Create suggestions array
+    const suggestions = [];
+    
+    // Try to add one of each type
+    if (checks.length > 0) {
+      const checkMove = checks[Math.floor(Math.random() * checks.length)];
+      suggestions.push({
+        move: checkMove,
+        explanation: "Puts your opponent in check, limiting their options",
+        risks: "May expose your pieces to counterattack"
+      });
+    }
+    
+    if (captures.length > 0) {
+      const captureMove = captures[Math.floor(Math.random() * captures.length)];
+      suggestions.push({
+        move: captureMove,
+        explanation: "Captures your opponent's piece for material advantage",
+        risks: "Check if this capture exposes important pieces"
+      });
+    }
+    
+    if (centerMoves.length > 0) {
+      const centerMove = centerMoves[Math.floor(Math.random() * centerMoves.length)];
+      suggestions.push({
+        move: centerMove,
+        explanation: "Controls the center of the board for better piece mobility",
+        risks: "May need to be defended against opponent's attacks"
+      });
+    }
+    
+    // Fill remaining suggestions with random moves
+    while (suggestions.length < 3 && moves.length > 0) {
+      const randomMove = moves[Math.floor(Math.random() * moves.length)];
+      if (!suggestions.some(s => s.move === randomMove)) {
+        suggestions.push({
+          move: randomMove,
+          explanation: "Develops your position and creates opportunities",
+          risks: "Consider how your opponent might respond"
+        });
+      }
+    }
+    
+    return { suggestions, source: 'fallback' };
+  } catch (error) {
+    console.error('Error generating fallback suggestions:', error);
+    return { 
+      suggestions: [
+        {
+          move: "e4",
+          explanation: "Controls the center and opens lines for the bishop and queen",
+          risks: "Slightly weakens the d4 square"
+        },
+        {
+          move: "d4",
+          explanation: "Establishes a strong center presence",
+          risks: "Can lead to a closed position"
+        },
+        {
+          move: "Nf3",
+          explanation: "Develops a knight toward the center",
+          risks: "Delays pawn development"
+        }
+      ],
+      source: 'fallback-default'
+    };
+  }
+};
+
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
     if (!pgn || moveNumber === undefined) {
@@ -338,13 +426,23 @@ export const getMoveSuggestions = async (fen) => {
       throw new Error('FEN is required');
     }
 
-    return await fetchWithRetry(`${API_BASE_URL}/suggest-moves`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ fen }),
-    });
+    try {
+      return await fetchWithRetry(`${API_BASE_URL}/suggest-moves`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fen }),
+      });
+    } catch (error) {
+      console.error('Error getting move suggestions from API:', error);
+      
+      // If the API call fails, generate fallback suggestions locally
+      console.log('Generating local fallback suggestions');
+      await new Promise(resolve => setTimeout(resolve, 800)); // Add delay for UX
+      
+      return generateFallbackSuggestions(fen);
+    }
   } catch (error) {
     console.error('Error getting move suggestions:', error);
     throw error;

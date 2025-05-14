@@ -280,10 +280,18 @@ const BotMatch = () => {
     try {
       const data = await getMoveSuggestions(game.fen());
       setSuggestions(data.suggestions);
+      
+      // Check if we're using fallback suggestions
+      if (data.source && data.source.includes('fallback')) {
+        console.log('Using fallback suggestions');
+        setUsingFallback(true);
+      }
     } catch (error) {
       console.error('Error fetching move suggestions:', error);
+      setErrorMessage('Failed to get move suggestions. Try again later.');
+    } finally {
+      setLoadingSuggestions(false);
     }
-    setLoadingSuggestions(false);
   };
 
   const handleMoveSelect = (move) => {
