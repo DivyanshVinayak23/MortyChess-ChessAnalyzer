@@ -192,7 +192,7 @@ ${pgnText}`;
                         <FiAlertCircle className="nav-icon" />
                         <span>Features</span>
                         </a>
-                        <a href="https://github.com/yourrepo" className="nav-link">
+                        <a href="https://github.com/DivyanshVinayak23/MortyChess-ChessAnalyzer" className="nav-link">
                         <FiGitBranch className="nav-icon" />
                         <span>GitHub</span>
                         </a>
