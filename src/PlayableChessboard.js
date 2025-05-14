@@ -20,6 +20,8 @@ function PlayableChessboard() {
     const [analysis, setAnalysis] = useState(null);
     const [loading, setLoading] = useState(false);
     const [showMoveAnalysis, setShowMoveAnalysis] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('Analyzing Position...');
+    const [usingFallback, setUsingFallback] = useState(false);
     
     function safeGameMutate(modify) {
         setGame((g) => {
@@ -51,28 +53,56 @@ ${pgnText}`;
 
     async function handleAnalyzePosition() {
         setLoading(true);
+        setLoadingMessage('Analyzing Position...');
+        setUsingFallback(false);
+        
         try {
             const formattedPGN = formatPGN(pgn);
             const data = await analyzePosition(formattedPGN, currentMoveIndex + 1);
             setAnalysis(data);
+            
+            // Check if we got fallback data
+            if (data.source && data.source.includes('fallback')) {
+                setUsingFallback(true);
+            }
         } catch (error) {
             console.error('Error analyzing position:', error);
-            alert('Failed to analyze position. Please check if the server is running.');
+            setUsingFallback(true);
         }
         setLoading(false);
     }
 
     async function handleAnalyzeGame() {
         setLoading(true);
+        setLoadingMessage('Analyzing Full Game...');
+        setUsingFallback(false);
+        
+        // Set up timers to update loading message for better UX
+        const messageTimer = setTimeout(() => {
+            setLoadingMessage('This may take up to a minute for complex games...');
+        }, 5000);
+        
+        const longWaitTimer = setTimeout(() => {
+            setLoadingMessage('Still working on your analysis. Thank you for your patience...');
+        }, 20000);
+        
         try {
             const formattedPGN = formatPGN(pgn);
             const data = await analyzeGame(formattedPGN);
             setAnalysis(data);
+            
+            // Check if we got fallback data
+            if (data.source && data.source.includes('fallback')) {
+                setUsingFallback(true);
+            }
         } catch (error) {
             console.error('Error analyzing game:', error);
-            alert('Failed to analyze game. Please check if the server is running.');
+            setUsingFallback(true);
+        } finally {
+            clearTimeout(messageTimer);
+            clearTimeout(longWaitTimer);
+            setLoading(false);
         }
-        setLoading(false);
     }
 
     function onDrop(sourceSquare, targetSquare) {
@@ -210,6 +240,11 @@ ${pgnText}`;
                     {analysis && (
                         <div className="panel-section">
                             <h3 className="section-title">Analysis Results</h3>
+                            {usingFallback && (
+                                <div className="fallback-notice">
+                                    Network issues detected. Showing basic analysis only.
+                                </div>
+                            )}
                             <div className="analysis-grid">
                                 {analysis.best_move && (
                                     <div className="analysis-card">
@@ -314,8 +349,8 @@ ${pgnText}`;
                 <div className="loading-overlay">
                     <div className="loading-content">
                         <div className="spinner"></div>
-                        <h3>Analyzing Position...</h3>
-                        <p>This may take a few moments</p>
+                        <h3>{loadingMessage}</h3>
+                        <p>The AI is analyzing your chess position</p>
                     </div>
                 </div>
             )}

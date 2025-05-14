@@ -271,10 +271,33 @@ app.post('/api/analyze-position', async (req, res) => {
 
 app.post('/api/analyze-game', async (req, res) => {
     try {
+        console.log('\n=== Game Analysis Request Started ===');
         const { pgn } = req.body;
         
         if (!pgn) {
+            console.error('Missing PGN in request');
             return res.status(400).json({ error: 'PGN is required' });
+        }
+
+        console.log('PGN received, length:', pgn.length);
+        console.log('First 100 chars of PGN:', pgn.substring(0, 100) + '...');
+
+        // In development, bypass AI for faster testing
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Development mode active - sending quick response');
+            const quickResponse = {
+                summary: "This is a development mode response. The game shows typical opening patterns with opportunities for both sides.",
+                moves: pgn.split(' ').filter(move => move && !move.includes('.')),
+                best_moves: [],
+                depth: 0,
+                nodes: 0,
+                time: 0,
+                current_move: 0,
+                source: 'dev-mode'
+            };
+            
+            res.setHeader('Content-Type', 'application/json');
+            return res.json(quickResponse);
         }
 
         const prompt = `As a chess grandmaster, analyze this complete game:
@@ -285,39 +308,107 @@ app.post('/api/analyze-game', async (req, res) => {
         
         Format your response in a clear, structured manner.`;
 
-        console.log('\n=== Game Analysis Request ===');
-        console.log('PGN:', pgn);
-        console.log('Prompt:', prompt);
-        console.log('\nWaiting for Gemini response...\n');
-
-        const result = await callGeminiWithTimeout(prompt, 'analyze-game');
-        const text = result;
-
-        if (!text || text.trim() === '') {
-            throw new Error('Empty response from Gemini');
-        }
-
-        console.log('=== Gemini Response ===');
-        console.log(text);
-        console.log('=====================\n');
-
-        const analysis = {
-            summary: text || 'No analysis available',
-            moves: pgn.split(' ').filter(move => move && !move.includes('.')),
-            best_moves: [],
-            depth: 0,
-            nodes: 0,
-            time: 0,
-            current_move: 0
-        };
+        console.log('Preparing to call Gemini AI...');
         
-        res.json(analysis);
+        // Set a timeout for the entire request
+        const requestTimeout = setTimeout(() => {
+            console.error('Request timed out after 45 seconds');
+            
+            // Create a fallback response
+            const fallbackResponse = {
+                summary: "Analysis timed out. Here's a basic assessment:\n\n" +
+                      "- The game shows normal opening development\n" +
+                      "- Both sides had tactical opportunities\n" +
+                      "- Consider analyzing key positions with a local engine",
+                moves: pgn.split(' ').filter(move => move && !move.includes('.')),
+                best_moves: [],
+                depth: 0,
+                nodes: 0,
+                time: 0,
+                current_move: 0,
+                source: 'timeout-fallback'
+            };
+            
+            // Only send a response if one hasn't been sent yet
+            if (!res.headersSent) {
+                console.log('Sending fallback response due to timeout');
+                res.setHeader('Content-Type', 'application/json');
+                res.json(fallbackResponse);
+            }
+        }, 45000); // 45 second timeout
+        
+        try {
+            console.log('Calling Gemini with 40 second timeout...');
+            const result = await callGeminiWithTimeout(prompt, 'analyze-game', 40000);
+            const text = result;
+            
+            // Clear the request timeout since we got a response
+            clearTimeout(requestTimeout);
+            
+            if (!text || text.trim() === '') {
+                console.error('Empty response from Gemini');
+                throw new Error('Empty response from Gemini');
+            }
+
+            console.log('=== Gemini Response Received ===');
+            console.log('Response length:', text.length);
+            console.log('First 100 chars:', text.substring(0, 100) + '...');
+
+            const analysis = {
+                summary: text || 'No analysis available',
+                moves: pgn.split(' ').filter(move => move && !move.includes('.')),
+                best_moves: [],
+                depth: 0,
+                nodes: 0,
+                time: 0,
+                current_move: 0
+            };
+            
+            // Only send a response if one hasn't been sent yet
+            if (!res.headersSent) {
+                console.log('Sending successful analysis response');
+                // Set explicit content type and cache headers
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Cache-Control', 'private, max-age=3600'); // Cache for 1 hour
+                res.json(analysis);
+            }
+        } catch (geminiError) {
+            // Clear the request timeout since we handled the error
+            clearTimeout(requestTimeout);
+            console.error('Error from Gemini API:', geminiError);
+            
+            // Create a fallback response
+            const fallbackResponse = {
+                summary: "AI service unavailable. Here's a basic assessment:\n\n" +
+                      "- The game follows standard opening theory\n" +
+                      "- Both players had opportunities for tactical play\n" +
+                      "- Consider reviewing the game with a local chess engine",
+                moves: pgn.split(' ').filter(move => move && !move.includes('.')),
+                best_moves: [],
+                depth: 0,
+                nodes: 0,
+                time: 0,
+                current_move: 0,
+                source: 'error-fallback'
+            };
+            
+            // Only send a response if one hasn't been sent yet
+            if (!res.headersSent) {
+                console.log('Sending fallback response due to Gemini error');
+                res.setHeader('Content-Type', 'application/json');
+                res.json(fallbackResponse);
+            }
+        }
     } catch (error) {
         console.error('Error in game analysis:', error);
-        res.status(500).json({ 
-            error: error.message,
-            details: error.stack
-        });
+        
+        // Only send a response if one hasn't been sent yet
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                error: error.message,
+                details: error.stack
+            });
+        }
     }
 });
 

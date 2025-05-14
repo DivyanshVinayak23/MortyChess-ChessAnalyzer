@@ -124,11 +124,17 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     try {
       console.log(`API request attempt ${attempt + 1}/${retries + 1} to ${url}`);
       
-      // Implement proper timeout handling
-      // Longer timeout for endpoints using Gemini
-      const timeoutDuration = url.includes('/analyze') || url.includes('/suggest-moves') 
-        ? 30000  // 30 seconds for AI endpoints
-        : 10000; // 10 seconds for other endpoints
+      // Implement proper timeout handling with specific timeouts for different endpoints
+      let timeoutDuration = 10000; // Default: 10 seconds
+      
+      if (url.includes('/analyze-game')) {
+        timeoutDuration = 90000; // 90 seconds for game analysis (most complex operation)
+        console.log('Using extended timeout (90s) for game analysis');
+      } else if (url.includes('/analyze-position') || url.includes('/analyze-moves')) {
+        timeoutDuration = 45000; // 45 seconds for position analysis
+      } else if (url.includes('/suggest-moves')) {
+        timeoutDuration = 30000; // 30 seconds for move suggestions
+      }
       
       console.log(`Using timeout of ${timeoutDuration}ms for ${url}`);
       
@@ -161,7 +167,11 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
           console.error('Empty response received');
           
           // Special handling for different endpoints
-          if (url.includes('/bot-move') && response.status === 200) {
+          if (url.includes('/analyze-game') && response.status === 200) {
+            // Likely a timeout but with 200 status
+            console.warn('Empty game analysis with 200 status - using fallback');
+            return generateFallbackGameAnalysis(JSON.parse(options.body).pgn);
+          } else if (url.includes('/bot-move') && response.status === 200) {
             // Extract FEN from request body
             let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
             try {
@@ -203,7 +213,10 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
           console.error('Error parsing JSON:', parseError, 'Response text:', responseText);
           
           // Special handling based on endpoint
-          if (url.includes('/bot-move')) {
+          if (url.includes('/analyze-game')) {
+            console.warn('JSON parse error for game analysis - using fallback');
+            return generateFallbackGameAnalysis(JSON.parse(options.body).pgn);
+          } else if (url.includes('/bot-move')) {
             // Extract FEN from request body
             let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
             try {
@@ -244,6 +257,10 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
         // Check if this was a timeout error
         if (fetchError.name === 'AbortError') {
           console.error(`Request timed out after ${timeoutDuration}ms`);
+          if (url.includes('/analyze-game')) {
+            console.warn('Game analysis timed out - using fallback');
+            return generateFallbackGameAnalysis(JSON.parse(options.body).pgn);
+          }
           throw new Error(`Request timed out after ${timeoutDuration}ms. The server might be busy.`);
         }
         
@@ -255,10 +272,16 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       
       if (attempt < retries) {
         // Increase delay for endpoints that are likely to need more time
-        const adjustedDelay = url.includes('/analyze') || url.includes('/suggest-moves')
-          ? delay * 2  // Double delay for AI endpoints
-          : delay;
-          
+        let adjustedDelay = delay;
+        
+        if (url.includes('/analyze-game')) {
+          adjustedDelay = delay * 3; // Triple delay for game analysis
+        } else if (url.includes('/analyze')) {
+          adjustedDelay = delay * 2; // Double delay for other analysis endpoints
+        } else if (url.includes('/suggest-moves')) {
+          adjustedDelay = delay * 1.5; // 1.5x delay for move suggestions
+        }
+        
         console.log(`Retrying after ${adjustedDelay}ms...`);
         await new Promise(resolve => setTimeout(resolve, adjustedDelay));
         // Exponential backoff
@@ -393,6 +416,38 @@ const generateFallbackSuggestions = (fen) => {
   }
 };
 
+// Generate a fallback game analysis when the API fails
+const generateFallbackGameAnalysis = (pgn) => {
+  try {
+    // Create a basic fallback analysis
+    return {
+      summary: "Network or server issues prevented detailed analysis. Here's a basic assessment:\n\n" +
+               "- Both players made standard opening moves\n" +
+               "- Key positions would benefit from deeper tactical analysis\n" +
+               "- Consider reviewing critical moments with a chess engine locally",
+      moves: pgn.split(' ').filter(move => move && !move.includes('.')),
+      best_moves: [],
+      depth: 0,
+      nodes: 0,
+      time: 0,
+      current_move: 0,
+      source: 'fallback'
+    };
+  } catch (error) {
+    console.error('Error generating fallback game analysis:', error);
+    return {
+      summary: "Unable to analyze the game due to connectivity issues. Please try again later.",
+      moves: [],
+      best_moves: [],
+      depth: 0,
+      nodes: 0,
+      time: 0,
+      current_move: 0,
+      source: 'fallback-error'
+    };
+  }
+};
+
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
     if (!pgn || moveNumber === undefined) {
@@ -418,13 +473,59 @@ export const analyzeGame = async (pgn) => {
       throw new Error('PGN is required');
     }
 
-    return await fetchWithRetry(`${API_BASE_URL}/analyze-game`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ pgn }),
-    });
+    console.log('analyzeGame called with PGN length:', pgn.length);
+    
+    // Special handling for long PGNs which may cause server timeouts
+    const MAX_DIRECT_PGN_LENGTH = 5000; // Limit for direct analysis
+    if (pgn.length > MAX_DIRECT_PGN_LENGTH) {
+      console.log('Long PGN detected, using simplified analysis');
+      
+      // Extract basic information from PGN to reduce payload
+      // Just send the moves without comments and headers
+      const simplifiedPgn = pgn
+        .replace(/\{[^}]*\}/g, '') // Remove comments
+        .replace(/\([^)]*\)/g, '') // Remove variations
+        .replace(/\$\d+/g, '');    // Remove NAGs
+    
+      try {
+        return await fetchWithRetry(`${API_BASE_URL}/analyze-game`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ pgn: simplifiedPgn }),
+        });
+      } catch (error) {
+        console.error('Error analyzing game from API with simplified PGN:', error);
+        
+        // If API call fails, generate fallback analysis
+        console.log('Generating local fallback game analysis');
+        await new Promise(resolve => setTimeout(resolve, 800)); // Add delay for UX
+        
+        return generateFallbackGameAnalysis(pgn);
+      }
+    }
+    
+    try {
+      const response = await fetchWithRetry(`${API_BASE_URL}/analyze-game`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pgn }),
+      }, 3, 2000); // 3 retries with 2 second initial delay
+      
+      return response;
+    } catch (error) {
+      console.error('Error analyzing game from API:', error);
+      console.warn('Falling back to local analysis');
+      
+      // If API call fails, generate fallback analysis
+      console.log('Generating local fallback game analysis');
+      await new Promise(resolve => setTimeout(resolve, 800)); // Add delay for UX
+      
+      return generateFallbackGameAnalysis(pgn);
+    }
   } catch (error) {
     console.error('Error analyzing game:', error);
     throw error;
