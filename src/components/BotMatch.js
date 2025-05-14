@@ -23,15 +23,17 @@ const BotMatch = () => {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     console.log('State updated:', { 
       showConfirmButton, 
       pendingMove, 
       isThinking, 
-      gameStatus 
+      gameStatus,
+      usingFallback 
     });
-  }, [showConfirmButton, pendingMove, isThinking, gameStatus]);
+  }, [showConfirmButton, pendingMove, isThinking, gameStatus, usingFallback]);
 
   // Clear error message after 5 seconds
   useEffect(() => {
@@ -42,6 +44,16 @@ const BotMatch = () => {
       return () => clearTimeout(timer);
     }
   }, [errorMessage]);
+
+  // Clear fallback indicator after 3 seconds
+  useEffect(() => {
+    if (usingFallback) {
+      const timer = setTimeout(() => {
+        setUsingFallback(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [usingFallback]);
 
   const makeMove = (move) => {
     try {
@@ -91,6 +103,12 @@ const BotMatch = () => {
       const data = await getBotMove(fen, difficulty);
       console.log('Bot move response:', data);
       
+      // Check if this is a fallback move
+      if (data && data.source && data.source.startsWith('fallback')) {
+        console.log('Using fallback move system');
+        setUsingFallback(true);
+      }
+      
       if (data && data.move) {
         console.log('Making bot move:', data.move);
         
@@ -107,6 +125,9 @@ const BotMatch = () => {
         console.error('Invalid bot move response:', data);
         throw new Error('Invalid bot move response');
       }
+      
+      // Always set thinking to false on success
+      setIsThinking(false);
     } catch (error) {
       console.error('Error getting bot move:', error);
       
@@ -123,7 +144,9 @@ const BotMatch = () => {
         setIsThinking(false);
       }
     } finally {
-      if (retryCount >= 2) {
+      // Ensure we don't get stuck in thinking state if we got a move
+      // (either real or fallback) but something else failed
+      if (retryCount >= 2 || game.history().length > moveHistory.length) {
         setIsThinking(false);
       }
     }
@@ -328,6 +351,11 @@ const BotMatch = () => {
             {errorMessage && (
               <div className="error-message">
                 {errorMessage}
+              </div>
+            )}
+            {usingFallback && (
+              <div className="fallback-message">
+                Network issue detected - using offline move
               </div>
             )}
           </div>

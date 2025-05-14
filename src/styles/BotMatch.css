@@ -143,6 +143,17 @@
   animation: fadeIn 0.3s ease-in-out;
 }
 
+.fallback-message {
+  background: linear-gradient(135deg, #ffb347 0%, #ffcc33 100%);
+  padding: 1rem 2rem;
+  border-radius: var(--border-radius);
+  margin: 1.5rem 0;
+  font-weight: 600;
+  color: #664400;
+  box-shadow: var(--box-shadow);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

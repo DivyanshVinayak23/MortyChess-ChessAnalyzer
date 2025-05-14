@@ -2,6 +2,50 @@ const API_BASE_URL = process.env.NODE_ENV === 'development'
     ? 'http://localhost:4000/api'
     : 'https://mortychess.onrender.com/api';
 
+// Generate a smart fallback move based on the position
+const generateFallbackMove = (fen) => {
+  try {
+    const { Chess } = require('chess.js');
+    const game = new Chess(fen);
+    const moves = game.moves();
+    
+    if (!moves || moves.length === 0) {
+      return { move: 'e5' }; // Default if no moves available
+    }
+    
+    // Try to find more strategic moves
+    const captures = moves.filter(m => m.includes('x'));
+    const checks = moves.filter(m => m.includes('+'));
+    const centerMoves = moves.filter(m => 
+      m.includes('e4') || m.includes('e5') || 
+      m.includes('d4') || m.includes('d5')
+    );
+    
+    // Prioritize moves
+    if (checks.length > 0) {
+      const selectedMove = checks[Math.floor(Math.random() * checks.length)];
+      return { move: selectedMove };
+    } 
+    
+    if (captures.length > 0) {
+      const selectedMove = captures[Math.floor(Math.random() * captures.length)];
+      return { move: selectedMove };
+    }
+    
+    if (centerMoves.length > 0) {
+      const selectedMove = centerMoves[Math.floor(Math.random() * centerMoves.length)];
+      return { move: selectedMove };
+    }
+    
+    // If no special moves, pick a random one
+    const randomMove = moves[Math.floor(Math.random() * moves.length)];
+    return { move: randomMove };
+  } catch (error) {
+    console.error('Error generating fallback move:', error);
+    return { move: 'e5' }; // Default fallback
+  }
+};
+
 // Helper to check if we're online
 const checkOnlineStatus = async () => {
   if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) {
@@ -41,7 +85,25 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     console.error('Connectivity check failed:', connectivityError);
     // For bot-move endpoint, provide a fallback
     if (url.includes('/bot-move')) {
-      return { move: 'e5' }; 
+      // Extract FEN from request body
+      let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+      try {
+        const requestBody = JSON.parse(options.body);
+        fen = requestBody.fen || fen;
+      } catch (e) {
+        console.error('Error parsing request body:', e);
+      }
+      
+      // Add a small delay to simulate server response time
+      // This gives the UI time to update properly
+      await new Promise(resolve => setTimeout(resolve, 800));
+      console.log('Returning fallback move due to connectivity issue');
+      
+      const fallbackMove = generateFallbackMove(fen);
+      return { 
+        ...fallbackMove, 
+        source: 'fallback-connectivity' 
+      }; 
     }
     throw connectivityError;
   }
@@ -69,8 +131,24 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
         // Special handling for bot-move endpoint - if we get an empty response
         // with status 200, construct a default response with a random move
         if (url.includes('/bot-move') && response.status === 200) {
+          // Extract FEN from request body
+          let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+          try {
+            const requestBody = JSON.parse(options.body);
+            fen = requestBody.fen || fen;
+          } catch (e) {
+            console.error('Error parsing request body:', e);
+          }
+          
+          // Add a small delay to simulate server response time
+          await new Promise(resolve => setTimeout(resolve, 800));
           console.log('Creating fallback bot move response');
-          return { move: 'e5' }; // Default fallback move
+          
+          const fallbackMove = generateFallbackMove(fen);
+          return {
+            ...fallbackMove,
+            source: 'fallback-empty'
+          };
         }
         
         throw new Error('Empty response from server');
@@ -83,8 +161,24 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
         
         // For bot-move endpoint, create a fallback response with a default move
         if (url.includes('/bot-move')) {
+          // Extract FEN from request body
+          let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+          try {
+            const requestBody = JSON.parse(options.body);
+            fen = requestBody.fen || fen;
+          } catch (e) {
+            console.error('Error parsing request body:', e);
+          }
+          
+          // Add a small delay to simulate server response time
+          await new Promise(resolve => setTimeout(resolve, 800));
           console.log('Creating fallback response for invalid JSON');
-          return { move: 'e5' }; // Default fallback move
+          
+          const fallbackMove = generateFallbackMove(fen);
+          return {
+            ...fallbackMove,
+            source: 'fallback-parse'
+          };
         }
         
         throw new Error(`Failed to parse JSON response: ${parseError.message}`);
@@ -104,8 +198,24 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   
   // If all attempts failed and it's the bot-move endpoint, return a fallback move
   if (url.includes('/bot-move')) {
+    // Extract FEN from request body
+    let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+    try {
+      const requestBody = JSON.parse(options.body);
+      fen = requestBody.fen || fen;
+    } catch (e) {
+      console.error('Error parsing request body:', e);
+    }
+    
+    // Add a small delay to simulate server response time
+    await new Promise(resolve => setTimeout(resolve, 800));
     console.warn('All retry attempts failed for bot move, providing fallback response');
-    return { move: 'e5' }; // Default fallback move as last resort
+    
+    const fallbackMove = generateFallbackMove(fen);
+    return {
+      ...fallbackMove,
+      source: 'fallback-final'
+    }; 
   }
   
   throw lastError;
