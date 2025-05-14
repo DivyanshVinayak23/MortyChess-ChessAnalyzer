@@ -83,7 +83,7 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
     await checkOnlineStatus();
   } catch (connectivityError) {
     console.error('Connectivity check failed:', connectivityError);
-    // For bot-move endpoint, provide a fallback
+    // Special handling for various endpoints
     if (url.includes('/bot-move')) {
       // Extract FEN from request body
       let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
@@ -104,6 +104,18 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
         ...fallbackMove, 
         source: 'fallback-connectivity' 
       }; 
+    } else if (url.includes('/suggest-moves')) {
+      // Extract FEN from request body for suggestions
+      let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+      try {
+        const requestBody = JSON.parse(options.body);
+        fen = requestBody.fen || fen;
+      } catch (e) {
+        console.error('Error parsing request body:', e);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 800));
+      return generateFallbackSuggestions(fen);
     }
     throw connectivityError;
   }
@@ -111,92 +123,151 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       console.log(`API request attempt ${attempt + 1}/${retries + 1} to ${url}`);
-      const response = await fetch(url, options);
       
-      console.log(`Response status: ${response.status}`);
+      // Implement proper timeout handling
+      // Longer timeout for endpoints using Gemini
+      const timeoutDuration = url.includes('/analyze') || url.includes('/suggest-moves') 
+        ? 30000  // 30 seconds for AI endpoints
+        : 10000; // 10 seconds for other endpoints
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Error response (${response.status}):`, errorText);
-        throw new Error(`API error: ${response.status} ${errorText}`);
-      }
+      console.log(`Using timeout of ${timeoutDuration}ms for ${url}`);
       
-      // Check for empty response
-      const responseText = await response.text();
-      console.log(`Response length: ${responseText.length} characters`);
+      // Create an AbortController to handle timeouts
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
       
-      if (!responseText.trim()) {
-        console.error('Empty response received');
-        
-        // Special handling for bot-move endpoint - if we get an empty response
-        // with status 200, construct a default response with a random move
-        if (url.includes('/bot-move') && response.status === 200) {
-          // Extract FEN from request body
-          let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
-          try {
-            const requestBody = JSON.parse(options.body);
-            fen = requestBody.fen || fen;
-          } catch (e) {
-            console.error('Error parsing request body:', e);
-          }
-          
-          // Add a small delay to simulate server response time
-          await new Promise(resolve => setTimeout(resolve, 800));
-          console.log('Creating fallback bot move response');
-          
-          const fallbackMove = generateFallbackMove(fen);
-          return {
-            ...fallbackMove,
-            source: 'fallback-empty'
-          };
-        }
-        
-        throw new Error('Empty response from server');
-      }
+      const fetchOptions = {
+        ...options,
+        signal: controller.signal
+      };
       
       try {
-        return JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Error parsing JSON:', parseError, 'Response text:', responseText);
+        const response = await fetch(url, fetchOptions);
+        clearTimeout(timeoutId); // Clear the timeout
         
-        // For bot-move endpoint, create a fallback response with a default move
-        if (url.includes('/bot-move')) {
-          // Extract FEN from request body
-          let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
-          try {
-            const requestBody = JSON.parse(options.body);
-            fen = requestBody.fen || fen;
-          } catch (e) {
-            console.error('Error parsing request body:', e);
-          }
-          
-          // Add a small delay to simulate server response time
-          await new Promise(resolve => setTimeout(resolve, 800));
-          console.log('Creating fallback response for invalid JSON');
-          
-          const fallbackMove = generateFallbackMove(fen);
-          return {
-            ...fallbackMove,
-            source: 'fallback-parse'
-          };
+        console.log(`Response status: ${response.status}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Error response (${response.status}):`, errorText);
+          throw new Error(`API error: ${response.status} ${errorText}`);
         }
         
-        throw new Error(`Failed to parse JSON response: ${parseError.message}`);
+        // Check for empty response
+        const responseText = await response.text();
+        console.log(`Response length: ${responseText.length} characters`);
+        
+        if (!responseText.trim()) {
+          console.error('Empty response received');
+          
+          // Special handling for different endpoints
+          if (url.includes('/bot-move') && response.status === 200) {
+            // Extract FEN from request body
+            let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+            try {
+              const requestBody = JSON.parse(options.body);
+              fen = requestBody.fen || fen;
+            } catch (e) {
+              console.error('Error parsing request body:', e);
+            }
+            
+            // Add a small delay to simulate server response time
+            await new Promise(resolve => setTimeout(resolve, 800));
+            console.log('Creating fallback bot move response');
+            
+            const fallbackMove = generateFallbackMove(fen);
+            return {
+              ...fallbackMove,
+              source: 'fallback-empty'
+            };
+          } else if (url.includes('/suggest-moves') && response.status === 200) {
+            // Extract FEN for suggestions
+            let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+            try {
+              const requestBody = JSON.parse(options.body);
+              fen = requestBody.fen || fen;
+            } catch (e) {
+              console.error('Error parsing request body:', e);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 800));
+            return generateFallbackSuggestions(fen);
+          }
+          
+          throw new Error('Empty response from server');
+        }
+        
+        try {
+          return JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Error parsing JSON:', parseError, 'Response text:', responseText);
+          
+          // Special handling based on endpoint
+          if (url.includes('/bot-move')) {
+            // Extract FEN from request body
+            let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+            try {
+              const requestBody = JSON.parse(options.body);
+              fen = requestBody.fen || fen;
+            } catch (e) {
+              console.error('Error parsing request body:', e);
+            }
+            
+            // Add a small delay to simulate server response time
+            await new Promise(resolve => setTimeout(resolve, 800));
+            console.log('Creating fallback response for invalid JSON');
+            
+            const fallbackMove = generateFallbackMove(fen);
+            return {
+              ...fallbackMove,
+              source: 'fallback-parse'
+            };
+          } else if (url.includes('/suggest-moves')) {
+            // Extract FEN for suggestions
+            let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+            try {
+              const requestBody = JSON.parse(options.body);
+              fen = requestBody.fen || fen;
+            } catch (e) {
+              console.error('Error parsing request body:', e);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 800));
+            return generateFallbackSuggestions(fen);
+          }
+          
+          throw new Error(`Failed to parse JSON response: ${parseError.message}`);
+        }
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        // Check if this was a timeout error
+        if (fetchError.name === 'AbortError') {
+          console.error(`Request timed out after ${timeoutDuration}ms`);
+          throw new Error(`Request timed out after ${timeoutDuration}ms. The server might be busy.`);
+        }
+        
+        throw fetchError;
       }
     } catch (error) {
       console.error(`Attempt ${attempt + 1} failed:`, error);
       lastError = error;
       
       if (attempt < retries) {
-        console.log(`Retrying after ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // Increase delay for endpoints that are likely to need more time
+        const adjustedDelay = url.includes('/analyze') || url.includes('/suggest-moves')
+          ? delay * 2  // Double delay for AI endpoints
+          : delay;
+          
+        console.log(`Retrying after ${adjustedDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, adjustedDelay));
         // Exponential backoff
         delay = delay * 2;
       }
     }
   }
   
-  // If all attempts failed and it's the bot-move endpoint, return a fallback move
+  // If all attempts failed, handle special cases
   if (url.includes('/bot-move')) {
     // Extract FEN from request body
     let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
@@ -216,6 +287,19 @@ const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
       ...fallbackMove,
       source: 'fallback-final'
     }; 
+  } else if (url.includes('/suggest-moves')) {
+    // Extract FEN for suggestions
+    let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'; // Default
+    try {
+      const requestBody = JSON.parse(options.body);
+      fen = requestBody.fen || fen;
+    } catch (e) {
+      console.error('Error parsing request body:', e);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+    console.warn('All retry attempts failed for move suggestions, providing fallback response');
+    return generateFallbackSuggestions(fen);
   }
   
   throw lastError;

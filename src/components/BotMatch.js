@@ -24,6 +24,7 @@ const BotMatch = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [usingFallback, setUsingFallback] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
   useEffect(() => {
     console.log('State updated:', { 
@@ -31,9 +32,10 @@ const BotMatch = () => {
       pendingMove, 
       isThinking, 
       gameStatus,
-      usingFallback 
+      usingFallback,
+      loadingSuggestions
     });
-  }, [showConfirmButton, pendingMove, isThinking, gameStatus, usingFallback]);
+  }, [showConfirmButton, pendingMove, isThinking, gameStatus, usingFallback, loadingSuggestions]);
 
   // Clear error message after 5 seconds
   useEffect(() => {
@@ -277,6 +279,17 @@ const BotMatch = () => {
     if (isThinking || gameStatus !== 'playing') return;
     
     setLoadingSuggestions(true);
+    setLoadingMessage('Analyzing position...');
+    
+    // Set up a timer to update the loading message if it takes too long
+    const loadingTimer = setTimeout(() => {
+      setLoadingMessage('AI is thinking deeply about this position...');
+    }, 5000);
+    
+    const longLoadingTimer = setTimeout(() => {
+      setLoadingMessage('This is taking longer than expected. Still analyzing...');
+    }, 15000);
+    
     try {
       const data = await getMoveSuggestions(game.fen());
       setSuggestions(data.suggestions);
@@ -290,7 +303,10 @@ const BotMatch = () => {
       console.error('Error fetching move suggestions:', error);
       setErrorMessage('Failed to get move suggestions. Try again later.');
     } finally {
+      clearTimeout(loadingTimer);
+      clearTimeout(longLoadingTimer);
       setLoadingSuggestions(false);
+      setLoadingMessage('');
     }
   };
 
@@ -420,8 +436,17 @@ const BotMatch = () => {
                 disabled={isThinking || gameStatus !== 'playing' || loadingSuggestions}
               >
                 <FiHelpCircle className="button-icon" />
-                {loadingSuggestions ? 'Loading...' : 'Get Move Suggestions'}
+                {loadingSuggestions 
+                  ? loadingMessage || 'Loading suggestions...' 
+                  : 'Get Move Suggestions'}
               </button>
+
+              {loadingSuggestions && (
+                <div className="loading-indicator">
+                  <div className="thinking-spinner"></div>
+                  <span>{loadingMessage || 'Analyzing position...'}</span>
+                </div>
+              )}
 
               <MoveSuggestions 
                 suggestions={suggestions}

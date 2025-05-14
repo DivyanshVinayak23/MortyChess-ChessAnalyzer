@@ -13,11 +13,17 @@ console.log('Environment variables loaded:', {
 const app = express();
 const port = process.env.PORT || 4000; 
 
+// Increase the server's timeout for long-running AI requests
+app.timeout = 60000; // 60 seconds
+
+// Increase the request size limit for PGN data
+app.use(express.json({ limit: '10mb' }));
+
 const allowedOrigins = [
     'http://localhost:3000',  // Local development frontend
     'https://mortychess.onrender.com',  // Production frontend
     'https://chess-analyzer.onrender.com', // Additional domain if needed
-
+    'https://yourdomain.com', // Add any other domains you use
 ];
 
 // CORS configuration for both development and production
@@ -44,14 +50,48 @@ app.use(cors({
     optionsSuccessStatus: 204
 }));
 
-app.use(express.json());
-
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
     console.error('GEMINI_API_KEY is not set in environment variables');
     process.exit(1);
 }
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// Helper function to call Gemini with proper timeout and error handling
+const callGeminiWithTimeout = async (prompt, timeoutMs = 25000) => {
+    return new Promise(async (resolve, reject) => {
+        // Set a timeout for the Gemini call
+        const timeoutId = setTimeout(() => {
+            reject(new Error(`Gemini API call timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        
+        try {
+            console.log('Initializing Gemini model');
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
+            
+            console.log('Sending request to Gemini');
+            const result = await model.generateContent(prompt);
+            
+            console.log('Received response from Gemini');
+            const response = await result.response;
+            const text = response.text();
+
+            clearTimeout(timeoutId);
+            
+            if (!text || text.trim() === '') {
+                reject(new Error('Empty response from Gemini'));
+                return;
+            }
+            
+            console.log(`Gemini response length: ${text.length} characters`);
+            resolve(text);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            console.error('Error calling Gemini:', error);
+            reject(error);
+        }
+    });
+};
 
 app.post('/api/bot-move', async (req, res) => {
     try {
@@ -177,10 +217,8 @@ app.post('/api/analyze-position', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const result = await callGeminiWithTimeout(prompt);
+        const text = result;
 
         if (!text || text.trim() === '') {
             throw new Error('Empty response from Gemini');
@@ -236,10 +274,8 @@ app.post('/api/analyze-game', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const result = await callGeminiWithTimeout(prompt);
+        const text = result;
 
         if (!text || text.trim() === '') {
             throw new Error('Empty response from Gemini');
@@ -279,7 +315,25 @@ app.post('/api/analyze-moves', async (req, res) => {
 
         console.log('Analyzing moves for PGN:', pgn.substring(0, 100) + '...');
         
-        const analysis = await moveAnalyzer.analyzeGame(pgn);
+        // Set a longer timeout for analysis since this can be complex
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Analysis timed out')), 40000); // 40 seconds
+        });
+        
+        // Create a promise for the move analysis
+        const analysisPromise = moveAnalyzer.analyzeGame(pgn);
+        
+        // Race the promises
+        let analysis;
+        try {
+            analysis = await Promise.race([analysisPromise, timeoutPromise]);
+        } catch (timeoutError) {
+            console.error('Move analysis timed out:', timeoutError);
+            return res.status(503).json({ 
+                error: 'Analysis timed out. The server is busy, please try again later.',
+                retryAfter: 30
+            });
+        }
         
         if (!analysis || !Array.isArray(analysis)) {
             throw new Error('Invalid analysis result from move analyzer');
@@ -300,6 +354,9 @@ app.post('/api/analyze-moves', async (req, res) => {
             summary: summary
         };
 
+        // Set explicit content type and cache headers
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'private, max-age=3600'); // Cache for 1 hour
         res.json(response);
     } catch (error) {
         console.error('Error in move analysis:', error);
@@ -405,10 +462,8 @@ app.post('/api/suggest-moves', async (req, res) => {
         console.log('Sending prompt to Gemini');
         
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
+            const result = await callGeminiWithTimeout(prompt);
+            const text = result;
 
             if (!text || text.trim() === '') {
                 console.error('Empty response from Gemini');
