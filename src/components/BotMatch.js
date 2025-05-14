@@ -21,6 +21,8 @@ const BotMatch = () => {
   const [validMoves, setValidMoves] = useState([]);
   const [suggestions, setSuggestions] = useState(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     console.log('State updated:', { 
@@ -30,6 +32,16 @@ const BotMatch = () => {
       gameStatus 
     });
   }, [showConfirmButton, pendingMove, isThinking, gameStatus]);
+
+  // Clear error message after 5 seconds
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => {
+        setErrorMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
 
   const makeMove = (move) => {
     try {
@@ -50,17 +62,39 @@ const BotMatch = () => {
   const makeBotMove = async () => {
     console.log('makeBotMove called');
     setIsThinking(true);
+    setErrorMessage(null);
     try {
       console.log('Sending request to get bot move with FEN:', game.fen());
+      console.log('Difficulty setting:', difficulty);
+      
       const data = await getBotMove(game.fen(), difficulty);
       console.log('Bot move response:', data);
-      if (data.move) {
+      
+      if (data && data.move) {
+        console.log('Making bot move:', data.move);
         makeMove(data.move);
+        setRetryCount(0); // Reset retry count on success
+      } else {
+        console.error('Invalid bot move response:', data);
+        throw new Error('Invalid bot move response');
       }
     } catch (error) {
       console.error('Error getting bot move:', error);
+      
+      // Retry logic for network errors
+      if (retryCount < 2) {
+        setRetryCount(prev => prev + 1);
+        setErrorMessage(`Connection issue. Retrying... (${retryCount + 1}/3)`);
+        setTimeout(makeBotMove, 2000); // Retry after 2 seconds
+      } else {
+        setErrorMessage(`Failed to get bot move: ${error.message}`);
+        setRetryCount(0);
+      }
+    } finally {
+      if (retryCount === 0) {
+        setIsThinking(false);
+      }
     }
-    setIsThinking(false);
   };
 
   const checkGameStatus = () => {
@@ -242,6 +276,11 @@ const BotMatch = () => {
                 {gameStatus === 'checkmate' && 'Checkmate! You won!'}
                 {gameStatus === 'stalemate' && 'Stalemate! The game is a draw.'}
                 {gameStatus === 'draw' && 'The game is a draw.'}
+              </div>
+            )}
+            {errorMessage && (
+              <div className="error-message">
+                {errorMessage}
               </div>
             )}
           </div>

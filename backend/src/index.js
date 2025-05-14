@@ -14,12 +14,24 @@ const app = express();
 const port = process.env.PORT || 4000; 
 
 const allowedOrigins = [
-    'http://localhost:3000'  // Only allow local frontend during development
+    'http://localhost:3000',  // Local development frontend
+    'https://mortychess.onrender.com'  // Production frontend
 ];
 
-// Development CORS configuration
+// CORS configuration for both development and production
 app.use(cors({
-    origin: 'http://localhost:3000',  // Explicitly set to frontend URL
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) === -1) {
+            console.log(`Rejected request from origin: ${origin}`);
+            return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
+        }
+        
+        console.log(`Allowed request from origin: ${origin}`);
+        return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
@@ -37,7 +49,13 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 app.post('/api/bot-move', async (req, res) => {
     try {
+        console.log('Bot move request received:', req.body);
         const { fen, difficulty } = req.body;
+        
+        if (!fen || !difficulty) {
+            console.error('Missing required fields:', { fen: !!fen, difficulty: !!difficulty });
+            return res.status(400).json({ error: 'FEN and difficulty are required' });
+        }
         
         let move;
         let game;
@@ -87,10 +105,13 @@ app.post('/api/bot-move', async (req, res) => {
         }
         
         if (!move) {
+            console.error('No valid moves found for position:', fen);
             return res.status(400).json({ error: 'No valid moves found' });
         }
         
-        res.json({ move });
+        const response = { move };
+        console.log('Sending bot move response:', response);
+        res.json(response);
     } catch (error) {
         console.error('Error in bot move:', error);
         res.status(500).json({ error: error.message });

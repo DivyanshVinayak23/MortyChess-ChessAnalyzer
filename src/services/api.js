@@ -2,32 +2,65 @@ const API_BASE_URL = process.env.NODE_ENV === 'development'
     ? 'http://localhost:4000/api'
     : 'https://mortychess.onrender.com/api';
 
+// Helper function for API requests with retry logic
+const fetchWithRetry = async (url, options, retries = 2, delay = 1000) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      console.log(`API request attempt ${attempt + 1}/${retries + 1} to ${url}`);
+      const response = await fetch(url, options);
+      
+      console.log(`Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error response (${response.status}):`, errorText);
+        throw new Error(`API error: ${response.status} ${errorText}`);
+      }
+      
+      // Check for empty response
+      const responseText = await response.text();
+      if (!responseText.trim()) {
+        console.error('Empty response received');
+        throw new Error('Empty response from server');
+      }
+      
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Error parsing JSON:', parseError, 'Response text:', responseText);
+        throw new Error(`Failed to parse JSON response: ${parseError.message}`);
+      }
+    } catch (error) {
+      console.error(`Attempt ${attempt + 1} failed:`, error);
+      lastError = error;
+      
+      if (attempt < retries) {
+        console.log(`Retrying after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        // Exponential backoff
+        delay = delay * 2;
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
 export const analyzePosition = async (pgn, moveNumber) => {
   try {
     if (!pgn || moveNumber === undefined) {
       throw new Error('PGN and moveNumber are required');
     }
 
-    const response = await fetch(`${API_BASE_URL}/analyze-position`, {
+    return await fetchWithRetry(`${API_BASE_URL}/analyze-position`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ pgn, moveNumber }),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to analyze position');
-    }
-
-    const data = await response.json();
-    
-    if (!data || !data.best_move || !data.evaluation) {
-      throw new Error('Invalid response format from server');
-    }
-
-    return data;
   } catch (error) {
     console.error('Error analyzing position:', error);
     throw error;
@@ -40,26 +73,13 @@ export const analyzeGame = async (pgn) => {
       throw new Error('PGN is required');
     }
 
-    const response = await fetch(`${API_BASE_URL}/analyze-game`, {
+    return await fetchWithRetry(`${API_BASE_URL}/analyze-game`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ pgn }),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to analyze game');
-    }
-
-    const data = await response.json();
-    
-    if (!data || !data.summary) {
-      throw new Error('Invalid response format from server');
-    }
-
-    return data;
   } catch (error) {
     console.error('Error analyzing game:', error);
     throw error;
@@ -70,22 +90,14 @@ export const getBotMove = async (fen, difficulty) => {
   console.log('getBotMove called with:', { fen, difficulty });
   try {
     console.log('Sending request to:', `${API_BASE_URL}/bot-move`);
-    const response = await fetch(`${API_BASE_URL}/bot-move`, {
+    
+    return await fetchWithRetry(`${API_BASE_URL}/bot-move`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ fen, difficulty }),
     });
-
-    console.log('Response status:', response.status);
-    if (!response.ok) {
-      throw new Error('Failed to get bot move');
-    }
-
-    const data = await response.json();
-    console.log('Bot move response data:', data);
-    return data;
   } catch (error) {
     console.error('Error getting bot move:', error);
     throw error;
@@ -94,12 +106,13 @@ export const getBotMove = async (fen, difficulty) => {
 
 export const fetchChessComGames = async (username) => {
   try {
-    const response = await fetch(`https://api.chess.com/pub/player/${username}/games/archives`);
-    if (!response.ok) throw new Error('User not found');
+    const response = await fetchWithRetry(`https://api.chess.com/pub/player/${username}/games/archives`, {
+      method: 'GET',
+    });
     
-    const archives = await response.json();
+    const archives = response;
     const gamesPromises = archives.archives.slice(-3).map(url => 
-      fetch(url).then(res => res.json())
+      fetchWithRetry(url, { method: 'GET' })
     );
     
     const monthlyGames = await Promise.all(gamesPromises);
@@ -124,26 +137,13 @@ export const analyzeMoves = async (pgn) => {
 
     console.log('Sending PGN to analyze:', pgn.substring(0, 100) + '...');
     
-    const response = await fetch(`${API_BASE_URL}/analyze-moves`, {
+    return await fetchWithRetry(`${API_BASE_URL}/analyze-moves`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ pgn }),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to analyze moves');
-    }
-
-    const data = await response.json();
-    
-    if (!data || !data.moves || !data.summary) {
-      throw new Error('Invalid response format from server');
-    }
-
-    return data;
   } catch (error) {
     console.error('Error analyzing moves:', error);
     throw error;
@@ -156,26 +156,13 @@ export const getMoveSuggestions = async (fen) => {
       throw new Error('FEN is required');
     }
 
-    const response = await fetch(`${API_BASE_URL}/suggest-moves`, {
+    return await fetchWithRetry(`${API_BASE_URL}/suggest-moves`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ fen }),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to get move suggestions');
-    }
-
-    const data = await response.json();
-    
-    if (!data || !data.suggestions) {
-      throw new Error('Invalid response format from server');
-    }
-
-    return data;
   } catch (error) {
     console.error('Error getting move suggestions:', error);
     throw error;
