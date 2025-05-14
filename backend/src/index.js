@@ -23,7 +23,6 @@ const allowedOrigins = [
     'http://localhost:3000',  // Local development frontend
     'https://mortychess.onrender.com',  // Production frontend
     'https://chess-analyzer.onrender.com', // Additional domain if needed
-    'https://yourdomain.com', // Add any other domains you use
 ];
 
 // CORS configuration for both development and production
@@ -217,12 +216,7 @@ app.post('/api/analyze-position', async (req, res) => {
 
         const prompt = `As a chess grandmaster, analyze this position from the following PGN at move ${moveNumber}:
         ${pgn}, make sure the output is short and to the point, no paragraphs
-        
-        Please provide:
-        1. The best move in this position(give the move directly)
-        2. An one line explanation of why this move is best
-        
-        Format your response in a clear, concise manner.`;
+        `;
 
         console.log('\n=== Position Analysis Request ===');
         console.log('PGN:', pgn);
@@ -301,12 +295,7 @@ app.post('/api/analyze-game', async (req, res) => {
         }
 
         const prompt = `As a chess grandmaster, analyze this complete game:
-        ${pgn}
-        Please provide: (one line for each)
-        1. Mistake Moves by both the players
-        2. Overall assessment of both the players
-        
-        Format your response in a clear, structured manner.`;
+        ${pgn}`;
 
         console.log('Preparing to call Gemini AI...');
         
