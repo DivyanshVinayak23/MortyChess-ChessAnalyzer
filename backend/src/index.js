@@ -58,12 +58,25 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Helper function to call Gemini with proper timeout and error handling
-const callGeminiWithTimeout = async (prompt, timeoutMs = 25000) => {
+const callGeminiWithTimeout = async (prompt, endpoint = '', timeoutMs = 25000) => {
+    // Adjust timeout based on the endpoint
+    let adjustedTimeout = timeoutMs;
+    
+    if (endpoint === 'analyze-game') {
+        adjustedTimeout = 50000; // 50 seconds for game analysis - most complex
+    } else if (endpoint === 'analyze-position') {
+        adjustedTimeout = 35000; // 35 seconds for position analysis
+    } else if (endpoint === 'suggest-moves') {
+        adjustedTimeout = 25000; // 25 seconds for move suggestions
+    }
+    
+    console.log(`Using ${adjustedTimeout}ms timeout for ${endpoint || 'generic'} Gemini call`);
+    
     return new Promise(async (resolve, reject) => {
         // Set a timeout for the Gemini call
         const timeoutId = setTimeout(() => {
-            reject(new Error(`Gemini API call timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
+            reject(new Error(`Gemini API call timed out after ${adjustedTimeout}ms`));
+        }, adjustedTimeout);
         
         try {
             console.log('Initializing Gemini model');
@@ -217,7 +230,7 @@ app.post('/api/analyze-position', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-        const result = await callGeminiWithTimeout(prompt);
+        const result = await callGeminiWithTimeout(prompt, 'analyze-position');
         const text = result;
 
         if (!text || text.trim() === '') {
@@ -243,6 +256,9 @@ app.post('/api/analyze-position', async (req, res) => {
             time: 0,
         };
         
+        // Add cache headers for position analysis
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'private, max-age=7200'); // Cache for 2 hours
         res.json(analysis);
     } catch (error) {
         console.error('Error in position analysis:', error);
@@ -274,7 +290,7 @@ app.post('/api/analyze-game', async (req, res) => {
         console.log('Prompt:', prompt);
         console.log('\nWaiting for Gemini response...\n');
 
-        const result = await callGeminiWithTimeout(prompt);
+        const result = await callGeminiWithTimeout(prompt, 'analyze-game');
         const text = result;
 
         if (!text || text.trim() === '') {
@@ -462,7 +478,7 @@ app.post('/api/suggest-moves', async (req, res) => {
         console.log('Sending prompt to Gemini');
         
         try {
-            const result = await callGeminiWithTimeout(prompt);
+            const result = await callGeminiWithTimeout(prompt, 'suggest-moves');
             const text = result;
 
             if (!text || text.trim() === '') {
