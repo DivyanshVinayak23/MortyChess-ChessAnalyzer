@@ -67,7 +67,7 @@ const callGeminiWithTimeout = async (prompt, timeoutMs = 25000) => {
         
         try {
             console.log('Initializing Gemini model');
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
             
             console.log('Sending request to Gemini');
             const result = await model.generateContent(prompt);
